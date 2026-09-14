@@ -1,0 +1,171 @@
+openapi: 3.1.0
+info:
+  title: AegisForge AI Engineering API
+  version: 0.1.0
+  description: Explicit Project, Agent, Workspace, Task and approval coordination.
+servers:
+  - url: https://forge.example.com
+security:
+  - bearerAuth: []
+paths:
+  /v1/agents:
+    get:
+      operationId: listAgents
+      summary: List registered Agents and live inventory
+      responses:
+        "200":
+          {
+            description: Agent list,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/ListResponse" } },
+              },
+          }
+  /v1/projects:
+    get:
+      operationId: listProjects
+      summary: List Projects
+      responses:
+        "200":
+          {
+            description: Project list,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/ListResponse" } },
+              },
+          }
+  /v1/tasks:
+    post:
+      operationId: createTask
+      summary: Create an explicitly assigned engineering task
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTask" }
+      responses:
+        "201":
+          {
+            description: Created task,
+            content: { application/json: { schema: { type: object } } },
+          }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/approvals/{id}/decision:
+    post:
+      operationId: decideApproval
+      summary: Human decision for one pending approval
+      parameters:
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision:
+                  { type: string, enum: [APPROVE_ONCE, APPROVE_SESSION, DENY] }
+      responses:
+        "200":
+          {
+            description: Decided approval,
+            content: { application/json: { schema: { type: object } } },
+          }
+        "409": { $ref: "#/components/responses/Error" }
+  /v1/tools/run:
+    post:
+      operationId: runTool
+      summary: Evaluate policy and dispatch an exact tool intent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ToolIntent" }
+      responses:
+        "200":
+          {
+            description: Executed,
+            content: { application/json: { schema: { type: object } } },
+          }
+        "202":
+          {
+            description: Human approval required,
+            content: { application/json: { schema: { type: object } } },
+          }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+  schemas:
+    ListResponse:
+      type: object
+      required: [data]
+      properties: { data: { type: array, items: { type: object } } }
+    CreateTask:
+      type: object
+      additionalProperties: false
+      required: [projectId, agentId, workspaceId, goal]
+      properties:
+        projectId: { type: string, format: uuid }
+        agentId: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        goal: { type: string, minLength: 3, maxLength: 20000 }
+        maxFixAttempts: { type: integer, minimum: 0, maximum: 5, default: 2 }
+    ToolIntent:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          taskId,
+          projectId,
+          agentId,
+          workspaceId,
+          stepId,
+          toolName,
+          arguments,
+          reason,
+          expectedImpact,
+          affectedResources,
+        ]
+      properties:
+        taskId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        agentId: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        stepId: { type: string, format: uuid }
+        toolName: { type: string }
+        arguments: { type: object, additionalProperties: true }
+        reason: { type: string }
+        expectedImpact: { type: string }
+        affectedResources: { type: array, items: { type: string } }
+        approvalId: { type: string, format: uuid }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            requestId: { type: string }
+  responses:
+    Error:
+      description: Structured API error
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }

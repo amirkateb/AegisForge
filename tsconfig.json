@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/contracts" },
+    { "path": "./packages/policy" },
+    { "path": "./tools" },
+    { "path": "./controller" },
+    { "path": "./server" },
+    { "path": "./agent" },
+    { "path": "./cli" },
+    { "path": "./installer" },
+    { "path": "./dashboard" }
+  ]
+}

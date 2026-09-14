@@ -1,0 +1,16 @@
+{
+  "name": "@aegisforge/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "migrate": "tsx src/persistence/migrate.ts"
+  },
+  "dependencies": {
+    "@aegisforge/contracts": "0.1.0",
+    "@aegisforge/policy": "0.1.0"
+  }
+}

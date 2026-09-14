@@ -1,0 +1,16 @@
+{
+  "name": "@aegisforge/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "aegisforge": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@aegisforge/contracts": "0.1.0",
+    "commander": "^14.0.1"
+  }
+}

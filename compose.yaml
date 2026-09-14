@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aegisforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: aegisforge
+    volumes: [aegisforge-db:/var/lib/postgresql/data]
+    healthcheck:
+      {
+        test: [CMD-SHELL, "pg_isready -U aegisforge"],
+        interval: 10s,
+        timeout: 5s,
+        retries: 10,
+      }
+  master:
+    build: { context: ., target: master }
+    restart: unless-stopped
+    depends_on: { postgres: { condition: service_healthy } }
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8787
+      DATABASE_URL: postgresql://aegisforge:${POSTGRES_PASSWORD}@postgres/aegisforge
+      MASTER_API_KEY: ${MASTER_API_KEY:?set MASTER_API_KEY}
+      MCP_KEY: ${MCP_KEY:?set MCP_KEY}
+      AGENT_ENROLLMENT_KEY: ${AGENT_ENROLLMENT_KEY:?set AGENT_ENROLLMENT_KEY}
+      DASHBOARD_SESSION_SECRET: ${DASHBOARD_SESSION_SECRET:?set DASHBOARD_SESSION_SECRET}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?set ALLOWED_ORIGINS}
+    ports: ["127.0.0.1:8787:8787"]
+volumes:
+  aegisforge-db:
