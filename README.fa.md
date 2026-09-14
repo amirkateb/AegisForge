@@ -2,16 +2,6 @@
 
 پلتفرم امن مهندسی نرم‌افزار از راه دور با هوش مصنوعی. یک Master مرکزی چند Agent، چند پروژه و چند Workspace را از طریق HTTPS/WSS مدیریت می‌کند؛ دستورات از مسیر Toolهای تایپ‌شده، Policy، Approval و Audit عبور می‌کنند.
 
-## نام پیشنهادی Repository
-
-`amirkateb/aegisforge`
-
-توضیح پیشنهادی GitHub:
-
-> Secure self-hosted AI remote engineering platform for multi-agent software operations, approvals, MCP and Custom GPT integration.
-
-توضیح فارسی:
-
 > پلتفرم امن و self-hosted برای مهندسی نرم‌افزار از راه دور با چند Agent، تأیید انسانی، MCP و اتصال Custom GPT.
 
 ## نصب سریع توسعه
