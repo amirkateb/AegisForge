@@ -237,9 +237,9 @@ function commandTool(
   description: string,
   executable: string,
   allowedActions: readonly string[],
-  level: 2 | 3 | 4,
-  risk: "MEDIUM" | "HIGH" | "CRITICAL",
-  approval: "SENSITIVE" | "ALWAYS" = "SENSITIVE",
+  level: 0 | 1 | 2 | 3 | 4,
+  risk: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+  approval: "NEVER" | "SENSITIVE" | "ALWAYS" = "SENSITIVE",
 ): ToolPlugin {
   return {
     definition: definition(
@@ -265,11 +265,42 @@ function commandTool(
           args: z.array(z.string().max(2000)).max(50).default([]),
         })
         .parse(arguments_);
+      if (approval === "NEVER" && input.args.some((argument) =>
+        /(?:^|=)\/(?!\/)|(^|\/)\.\.(\/|$)|^--output(?:=|$)|^-o$|^--exec(?:=|$)/.test(argument)
+      )) throw new Error("Read-only tool arguments cannot target output or escape the workspace");
       return exec(
         executable,
         [input.action, ...input.args],
         context.workspaceRoot,
       );
+    },
+  };
+}
+
+function prefixedCommandTool(
+  name: string,
+  description: string,
+  executable: string,
+  prefix: string,
+  allowedActions: readonly string[],
+  level: 0 | 1 | 2 | 3 | 4,
+  risk: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+  approval: "NEVER" | "SENSITIVE" | "ALWAYS",
+): ToolPlugin {
+  return {
+    definition: definition(name, description, level, risk, approval, {
+      type: "object",
+      required: ["action"],
+      properties: { action: { enum: allowedActions }, args: { type: "array", items: { type: "string" } } },
+    }, 600_000),
+    async execute(arguments_, context) {
+      const input = z.object({
+        action: z.string().refine((value) => allowedActions.includes(value)),
+        args: z.array(z.string().max(2000)).max(50).default([]),
+      }).parse(arguments_);
+      if (approval === "NEVER" && input.args.some((argument) => /(?:^|=)\/(?!\/)|(^|\/)\.\.(\/|$)|^--output(?:=|$)|^-o$/.test(argument)))
+        throw new Error("Read-only tool arguments cannot target output or escape the workspace");
+      return exec(executable, [prefix, input.action, ...input.args], context.workspaceRoot);
     },
   };
 }
@@ -320,6 +351,68 @@ export const nginxTool = commandTool(
   3,
   "HIGH",
   "ALWAYS",
+);
+export const apacheTool = commandTool(
+  "developer.apache",
+  "Validate or reload Apache",
+  "apachectl",
+  ["configtest", "-k"],
+  3,
+  "HIGH",
+  "ALWAYS",
+);
+export const traefikTool = commandTool(
+  "developer.traefik",
+  "Validate or reload Traefik configuration",
+  "traefik",
+  ["version", "healthcheck"],
+  3,
+  "HIGH",
+  "ALWAYS",
+);
+export const sslTool = commandTool(
+  "developer.ssl",
+  "Inspect, issue or renew Let's Encrypt certificates with Certbot",
+  "certbot",
+  ["certificates", "certonly", "renew"],
+  3,
+  "HIGH",
+  "ALWAYS",
+);
+export const composerTool = commandTool(
+  "developer.composer",
+  "Install or inspect Composer dependencies",
+  "composer",
+  ["install", "update", "audit", "show"],
+  2,
+  "HIGH",
+);
+export const firewallTool = commandTool(
+  "system.firewall",
+  "Inspect or change UFW firewall policy",
+  "ufw",
+  ["status", "allow", "deny", "delete"],
+  3,
+  "HIGH",
+  "ALWAYS",
+);
+export const cronTool = commandTool(
+  "system.cron",
+  "List, install or remove an explicit crontab",
+  "crontab",
+  ["-l", "-u", "-r"],
+  3,
+  "HIGH",
+  "ALWAYS",
+);
+export const diskTool = commandTool(
+  "system.disk",
+  "Inspect filesystem capacity and bounded path usage",
+  "df",
+  ["-P", "-h", "-i"],
+  0,
+  "MEDIUM",
+  "NEVER",
 );
 export const databaseTool = commandTool(
   "database.postgresql",
@@ -401,6 +494,19 @@ export const restoreTool = commandTool(
   "ALWAYS",
 );
 
+export const dockerContainerListTool = commandTool("docker.container.list", "List running and stopped Docker containers", "docker", ["ps"], 0, "LOW", "NEVER");
+export const dockerLogsTool = commandTool("docker.logs", "Read bounded Docker container logs", "docker", ["logs"], 0, "LOW", "NEVER");
+export const dockerRestartTool = commandTool("docker.restart", "Restart an approved Docker container", "docker", ["restart"], 3, "HIGH", "ALWAYS");
+export const dockerComposeTool = commandTool("docker.compose", "Inspect or operate a Docker Compose project", "docker", ["compose"], 3, "HIGH", "ALWAYS");
+export const laravelQueueTool = prefixedCommandTool("laravel.queue.debug", "Inspect or retry Laravel queue failures through Artisan", "php", "artisan", ["queue:failed", "queue:monitor", "queue:retry"], 3, "HIGH", "ALWAYS");
+export const laravelMigrationTool = prefixedCommandTool("laravel.migration.analyze", "Inspect Laravel migration state through Artisan", "php", "artisan", ["migrate:status"], 1, "LOW", "NEVER");
+export const laravelCacheTool = prefixedCommandTool("laravel.cache.manage", "Clear explicit Laravel application caches", "php", "artisan", ["cache:clear", "config:clear", "route:clear", "view:clear"], 3, "HIGH", "ALWAYS");
+export const wordpressPluginTool = prefixedCommandTool("wordpress.plugin.analyze", "Inspect WordPress plugin status and metadata", "wp", "plugin", ["list", "status", "get", "verify-checksums"], 1, "LOW", "NEVER");
+export const wordpressRepairTool = prefixedCommandTool("wordpress.database.repair", "Run an approved WordPress database repair", "wp", "db", ["repair", "optimize"], 3, "HIGH", "ALWAYS");
+export const gitDiffTool = commandTool("git.diff.analyze", "Inspect Git diff and changed-file impact", "git", ["diff", "status"], 0, "LOW", "NEVER");
+export const gitBranchTool = commandTool("git.branch.manage", "Inspect or change Git branches", "git", ["branch", "switch", "checkout"], 2, "HIGH", "SENSITIVE");
+export const gitConflictTool = commandTool("git.conflict.analyze", "Inspect unresolved Git conflicts", "git", ["diff", "status", "ls-files"], 0, "LOW", "NEVER");
+
 export const operationalTools = [
   processListTool,
   serviceStatusTool,
@@ -411,6 +517,13 @@ export const operationalTools = [
   gitTool,
   dockerTool,
   nginxTool,
+  apacheTool,
+  traefikTool,
+  sslTool,
+  composerTool,
+  firewallTool,
+  cronTool,
+  diskTool,
   databaseTool,
   mysqlTool,
   redisTool,
@@ -420,4 +533,16 @@ export const operationalTools = [
   wordpressTool,
   backupTool,
   restoreTool,
+  dockerContainerListTool,
+  dockerLogsTool,
+  dockerRestartTool,
+  dockerComposeTool,
+  laravelQueueTool,
+  laravelMigrationTool,
+  laravelCacheTool,
+  wordpressPluginTool,
+  wordpressRepairTool,
+  gitDiffTool,
+  gitBranchTool,
+  gitConflictTool,
 ];

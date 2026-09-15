@@ -72,9 +72,10 @@ const app = await buildServer({
   },
   logger: false,
 });
-await app.listen({ host: "127.0.0.1", port: 4173 });
+const previewPort = Number(process.env.AEGIS_PREVIEW_PORT ?? 4173);
+await app.listen({ host: "127.0.0.1", port: previewPort });
 console.error(
-  "Dashboard preview: http://127.0.0.1:4173 (key: preview-master-key)",
+  `Dashboard preview: http://127.0.0.1:${previewPort} (key: preview-master-key)`,
 );
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, () => void app.close().finally(() => process.exit(0)));

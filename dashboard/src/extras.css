@@ -66,6 +66,27 @@
   color: #dce7f1;
   padding: 9px 11px;
 }
+.logs details {
+  max-width: 30rem;
+}
+.logs summary,
+.logs td button {
+  color: var(--accent);
+  cursor: pointer;
+}
+.logs td button {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  padding: 5px 8px;
+}
+.logs pre {
+  max-width: 30rem;
+  max-height: 14rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--muted);
+}
 .log-toolbar input {
   min-width: 280px;
   border-radius: 7px 0 0 7px;

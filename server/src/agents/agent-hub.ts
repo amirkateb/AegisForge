@@ -4,6 +4,7 @@ import {
   AgentHelloSchema,
   DispatchSchema,
   type Dispatch,
+  type AgentInventory,
   type ToolDefinition,
 } from "../../../packages/contracts/src/index.js";
 import type { PlatformStore } from "../domain.js";
@@ -12,6 +13,8 @@ interface ConnectedAgent {
   socket: WebSocket;
   tools: Map<string, ToolDefinition>;
   lastPongAt: number;
+  lastPingAt: number | null;
+  inventory: AgentInventory;
 }
 interface PendingDispatch {
   resolve(value: unknown): void;
@@ -53,6 +56,8 @@ export class AgentHub {
           socket,
           tools: new Map(hello.tools.map((tool) => [tool.name, tool])),
           lastPongAt: Date.now(),
+          lastPingAt: null,
+          inventory: hello.inventory,
         });
         socket.send(
           JSON.stringify({
@@ -67,7 +72,20 @@ export class AgentHub {
         });
         socket.on("pong", () => {
           const connected = this.agents.get(agentId);
-          if (connected?.socket === socket) connected.lastPongAt = Date.now();
+          if (connected?.socket === socket) {
+            const now = Date.now();
+            connected.lastPongAt = now;
+            const latencyMs = connected.lastPingAt == null ? null : Math.max(0, now - connected.lastPingAt);
+            connected.inventory = {
+              ...connected.inventory,
+              health: {
+                score: liveHealthScore(connected.inventory, latencyMs),
+                latencyMs,
+                lastHeartbeatAt: new Date(now).toISOString(),
+              },
+            };
+            void this.store.updateAgentPresence(agentId, connected.inventory, new Date(now));
+          }
         });
         socket.once("close", () => void this.disconnect(agentId, socket));
       } catch (error) {
@@ -174,7 +192,18 @@ export class AgentHub {
       if (now - connection.lastPongAt > 90_000) {
         connection.socket.terminate();
         this.agents.delete(agentId);
-      } else connection.socket.ping();
+      } else {
+        connection.lastPingAt = now;
+        connection.socket.ping();
+      }
     }
   }
+}
+
+function liveHealthScore(inventory: AgentInventory, latencyMs: number | null): number {
+  const memoryFree = inventory.memory.totalBytes ? inventory.memory.freeBytes / inventory.memory.totalBytes * 100 : 0;
+  const disk = inventory.disks[0];
+  const diskFree = disk?.totalBytes ? disk.freeBytes / disk.totalBytes * 100 : 100;
+  const latency = latencyMs == null ? 100 : Math.max(0, 100 - latencyMs / 10);
+  return Math.round((100 - inventory.cpu.loadPercent) * 0.35 + memoryFree * 0.3 + diskFree * 0.25 + latency * 0.1);
 }

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import type {
   EngineeringPlan,
+  ProjectContext,
+  ProjectContextCategory,
   ProjectProfile,
 } from "../../../packages/contracts/src/index.js";
 import type {
@@ -9,6 +11,7 @@ import type {
   ApprovalRecord,
   AuditRecord,
   PlatformStore,
+  OrganizationRecord,
   ProjectRecord,
   TaskRecord,
   TaskStepRecord,
@@ -38,6 +41,16 @@ export class PgStore implements PlatformStore {
   }
   private async one<T>(sql: string, values: unknown[] = []): Promise<T | null> {
     return (await this.rows<T>(sql, values))[0] ?? null;
+  }
+
+  async listOrganizations() {
+    return this.rows<OrganizationRecord>("SELECT * FROM organizations ORDER BY name");
+  }
+  async createOrganization(input: Pick<OrganizationRecord, "name">) {
+    return (await this.one<OrganizationRecord>("INSERT INTO organizations(name) VALUES($1) RETURNING *", [input.name]))!;
+  }
+  async findOrganization(id: string) {
+    return this.one<OrganizationRecord>("SELECT * FROM organizations WHERE id=$1", [id]);
   }
 
   async listAgents() {
@@ -78,18 +91,18 @@ export class PgStore implements PlatformStore {
   async listProjects() {
     return this.rows<ProjectRecord>("SELECT * FROM projects ORDER BY name");
   }
-  async createProject(input: Pick<ProjectRecord, "name" | "repositoryUrl">) {
+  async createProject(input: { name: string; repositoryUrl: string | null; organizationId?: string | null }) {
     return (await this.one<ProjectRecord>(
-      "INSERT INTO projects(name, repository_url) VALUES($1,$2) RETURNING *",
-      [input.name, input.repositoryUrl],
+      "INSERT INTO projects(name, repository_url, organization_id) VALUES($1,$2,$3) RETURNING *",
+      [input.name, input.repositoryUrl, input.organizationId ?? null],
     ))!;
   }
   async findProject(id: string) {
     return this.one<ProjectRecord>("SELECT * FROM projects WHERE id=$1", [id]);
   }
-  async findProjectByName(name: string) {
-    return this.one<ProjectRecord>("SELECT * FROM projects WHERE name=$1", [
-      name,
+  async findProjectByName(name: string, organizationId: string | null = null) {
+    return this.one<ProjectRecord>("SELECT * FROM projects WHERE name=$1 AND organization_id IS NOT DISTINCT FROM $2", [
+      name, organizationId,
     ]);
   }
   async createWorkspace(
@@ -104,6 +117,11 @@ export class PgStore implements PlatformStore {
     return this.one<WorkspaceRecord>("SELECT * FROM workspaces WHERE id=$1", [
       id,
     ]);
+  }
+  async listWorkspaces(projectId?: string) {
+    return projectId
+      ? this.rows<WorkspaceRecord>("SELECT * FROM workspaces WHERE project_id=$1 ORDER BY created_at", [projectId])
+      : this.rows<WorkspaceRecord>("SELECT * FROM workspaces ORDER BY created_at");
   }
   async listTasks() {
     return this.rows<TaskRecord>(
@@ -269,11 +287,52 @@ export class PgStore implements PlatformStore {
       "INSERT INTO project_memory(project_id,category,content,source_task_id) VALUES($1,'profile',$2,$3) ON CONFLICT(project_id,category) DO UPDATE SET content=excluded.content,source_task_id=excluded.source_task_id,updated_at=now()",
       [projectId, JSON.stringify(profile), sourceTaskId ?? null],
     );
+    await Promise.all([
+      this.saveProjectMemory(projectId, "architecture", profile.architecture, sourceTaskId),
+      this.saveProjectMemory(projectId, "dependencies", profile.dependencies, sourceTaskId),
+      this.saveProjectMemory(projectId, "database", profile.databases, sourceTaskId),
+      this.saveProjectMemory(projectId, "routes", profile.routes, sourceTaskId),
+    ]);
+  }
+  async saveProjectMemory(projectId: string, category: ProjectContextCategory, content: unknown, sourceTaskId?: string) {
+    await this.pool.query(
+      "INSERT INTO project_memory(project_id,category,content,source_task_id) VALUES($1,$2,$3,$4) ON CONFLICT(project_id,category) DO UPDATE SET content=excluded.content,source_task_id=excluded.source_task_id,updated_at=now()",
+      [projectId, category, JSON.stringify(redactEvent(content)), sourceTaskId ?? null],
+    );
+  }
+  async loadProjectContext(projectId: string): Promise<ProjectContext> {
+    const rows = await this.rows<{ category: ProjectContextCategory; content: unknown }>("SELECT category,content FROM project_memory WHERE project_id=$1", [projectId]);
+    const memory = new Map(rows.map((row) => [row.category, row.content]));
+    return {
+      projectId,
+      architecture: memory.get("architecture") ?? null,
+      dependencies: memory.get("dependencies") ?? null,
+      environment: memory.get("environment") ?? null,
+      database: memory.get("database") ?? null,
+      routes: memory.get("routes") ?? null,
+      decisions: memory.get("decisions") ?? null,
+      knownIssues: memory.get("known-issues") ?? null,
+      history: memory.get("history") ?? null,
+      codeIndex: (memory.get("code-index") as ProjectContext["codeIndex"] | undefined) ?? null,
+    };
+  }
+  async appendProjectHistory(projectId: string, entry: { taskId: string; outcome: string; summary: string; at?: string }) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const existing = await client.query<{ content: unknown }>("SELECT content FROM project_memory WHERE project_id=$1 AND category='history' FOR UPDATE", [projectId]);
+      const history = Array.isArray(existing.rows[0]?.content) ? existing.rows[0].content : [];
+      const content = [...history.slice(-499), { ...entry, at: entry.at ?? new Date().toISOString() }];
+      await client.query("INSERT INTO project_memory(project_id,category,content) VALUES($1,'history',$2) ON CONFLICT(project_id,category) DO UPDATE SET content=excluded.content,updated_at=now()", [projectId, JSON.stringify(redactEvent(content))]);
+      await client.query("COMMIT");
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
   }
   async saveTaskPlan(taskId: string, plan: EngineeringPlan) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
+      await client.query("UPDATE tasks SET plan=$2,updated_at=now() WHERE id=$1", [taskId, JSON.stringify(plan)]);
       await client.query("DELETE FROM task_steps WHERE task_id=$1", [taskId]);
       for (const [position, step] of plan.steps.entries())
         await client.query(
@@ -295,14 +354,19 @@ export class PgStore implements PlatformStore {
       client.release();
     }
   }
+  async loadTaskPlan(taskId: string) {
+    const record = await this.one<{ plan: EngineeringPlan | null }>("SELECT plan FROM tasks WHERE id=$1", [taskId]);
+    return record?.plan ?? null;
+  }
   async recordTaskEvidence(
     taskId: string,
     position: number,
     evidence: unknown,
+    verified = true,
   ) {
     const result = await this.pool.query(
-      "UPDATE task_steps SET evidence=$3,state='VERIFIED' WHERE task_id=$1 AND position=$2",
-      [taskId, position, JSON.stringify(redactEvent(evidence))],
+      "UPDATE task_steps SET evidence=$3,state=$4 WHERE task_id=$1 AND position=$2",
+      [taskId, position, JSON.stringify(redactEvent(evidence)), verified ? "VERIFIED" : "FAILED_VERIFICATION"],
     );
     if (!result.rowCount) throw new Error("Task step not found");
   }

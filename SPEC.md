@@ -99,6 +99,6 @@ Use explicit domain names, discriminated unions, immutable inputs, boundary vali
 ## Assumptions
 
 - Linux is the first production host target; macOS/Windows Agents remain supported by the runtime but service installation is Linux-first.
-- One organization per deployment in v1; data structures retain `organizationId` for future tenancy.
+- Multiple organizations and Projects are supported; Agent/workspace assignment remains explicit or deterministically selected without a default Agent.
 - TLS certificates are provisioned through Certbot only when DNS already resolves to the host.
 - LLM providers are adapters. AegisForge works without one for deterministic task/tool execution.

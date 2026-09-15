@@ -15,12 +15,19 @@ The stable REST prefix is `/v1`. Send `Authorization: Bearer <MASTER_API_KEY>` f
 | POST     | `/v1/agents/{id}/rotate-token` | Master      | rotate and disconnect                        |
 | POST     | `/v1/agent/workspaces`         | Agent       | register its local root and Project          |
 | GET/POST | `/v1/projects`                 | Master      | list/create Projects                         |
+| GET      | `/v1/projects/{id}/context`    | Master      | load durable context                         |
+| PUT      | `/v1/projects/{id}/context/{category}` | Master | update one context category           |
+| GET      | `/v1/projects/{id}/impact?symbol=User` | Master | code impact query                     |
+| POST     | `/v1/projects/{id}/deployments` | Master/MCP | create and run a staged deployment plan |
+| POST     | `/v1/projects/{id}/tls`         | Master/MCP | create and run a DNS-to-HTTPS plan          |
 | POST     | `/v1/workspaces`               | Master      | bind Project, Agent and root                 |
-| GET/POST | `/v1/tasks`                    | Master/MCP  | list/create explicitly assigned tasks        |
+| GET/POST | `/v1/tasks`                    | Master/MCP  | list/create automatic or explicit tasks      |
+| POST     | `/v1/tasks/{id}/run`           | Master/MCP  | run/resume the autonomous controller         |
 | GET      | `/v1/approvals`                | Master      | list approval queue                          |
 | POST     | `/v1/approvals/{id}/decision`  | Master      | once/session/deny                            |
 | POST     | `/v1/tools/run`                | Master/MCP  | evaluate and dispatch exact tool intent      |
-| GET      | `/v1/logs`                     | Master      | redacted audit events                        |
+| GET      | `/v1/logs`                     | Master      | redacted events with bounded filters         |
+| GET      | `/v1/logs/export`              | Master      | filtered redacted CSV export                 |
 | *        | `/mcp`                         | MCP         | stateless MCP transport                      |
 | WSS      | `/v1/agent/connect`            | Agent       | HELLO, heartbeat, DISPATCH and RESULT        |
 
@@ -37,6 +44,8 @@ The stable REST prefix is `/v1`. Send `Authorization: Bearer <MASTER_API_KEY>` f
 ```
 
 The Master rejects cross-boundary assignments. If more than one Agent is suitable, the caller must select explicitly; AegisForge never guesses a default.
+
+For automatic assignment omit both `agentId` and `workspaceId`; optionally send `requiredPermissionLevel` and `technologies`. No candidate or an equal top score returns `409 AGENT_SELECTION_REQUIRED` with actionable details.
 
 ## Tool execution and approvals
 

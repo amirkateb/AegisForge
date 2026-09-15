@@ -46,6 +46,12 @@ export const TaskStatusSchema = z.enum([
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 
 export const AgentInventorySchema = z.object({
+  agentVersion: z.string().min(1).max(100).optional(),
+  health: z.object({
+    score: z.number().min(0).max(100),
+    latencyMs: z.number().nonnegative().nullable(),
+    lastHeartbeatAt: z.string().datetime(),
+  }).optional(),
   os: z.object({
     platform: z.string(),
     release: z.string(),
@@ -141,6 +147,66 @@ export const ProjectProfileSchema = z.object({
   importantFiles: z.array(z.string()).max(200),
 });
 export type ProjectProfile = z.infer<typeof ProjectProfileSchema>;
+
+export const CodeSymbolSchema = z.object({
+  name: z.string().min(1).max(300),
+  kind: z.enum(["class", "interface", "function", "method", "module"]),
+  path: z.string().min(1).max(2000),
+  line: z.number().int().positive(),
+});
+export const CodeRelationSchema = z.object({
+  from: z.string().min(1).max(2000),
+  to: z.string().min(1).max(2000),
+  type: z.enum(["imports", "uses", "extends", "calls"]),
+});
+export const RouteInfoSchema = z.object({
+  method: z.string().min(1).max(20),
+  path: z.string().min(1).max(2000),
+  handler: z.string().max(1000).nullable(),
+  source: z.string().min(1).max(2000),
+});
+export const DatabaseEntitySchema = z.object({
+  name: z.string().min(1).max(300),
+  kind: z.enum(["table", "model", "migration"]),
+  source: z.string().min(1).max(2000),
+});
+export const CodeIndexSchema = z.object({
+  version: z.literal(1),
+  generatedAt: z.string().datetime(),
+  filesIndexed: z.number().int().nonnegative(),
+  symbols: z.array(CodeSymbolSchema).max(20_000),
+  relations: z.array(CodeRelationSchema).max(40_000),
+  routes: z.array(RouteInfoSchema).max(5000),
+  databaseEntities: z.array(DatabaseEntitySchema).max(5000),
+});
+export type CodeIndex = z.infer<typeof CodeIndexSchema>;
+
+export const ProjectContextCategorySchema = z.enum([
+  "architecture",
+  "dependencies",
+  "environment",
+  "database",
+  "routes",
+  "decisions",
+  "known-issues",
+  "history",
+  "code-index",
+]);
+export type ProjectContextCategory = z.infer<typeof ProjectContextCategorySchema>;
+
+export const ProjectContextSchema = z.object({
+  projectId: z.string().min(1),
+  architecture: z.unknown().nullable(),
+  dependencies: z.unknown().nullable(),
+  environment: z.unknown().nullable(),
+  database: z.unknown().nullable(),
+  routes: z.unknown().nullable(),
+  decisions: z.unknown().nullable(),
+  knownIssues: z.unknown().nullable(),
+  history: z.unknown().nullable(),
+  codeIndex: CodeIndexSchema.nullable(),
+});
+export type ProjectContext = z.infer<typeof ProjectContextSchema>;
 
 export const AgentHelloSchema = z.object({
   type: z.literal("HELLO"),

@@ -8,6 +8,12 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /v1/organizations:
+    get:
+      operationId: listOrganizations
+      summary: List organizations
+      responses:
+        "200": { description: Organization list, content: { application/json: { schema: { $ref: "#/components/schemas/ListResponse" } } } }
   /v1/agents:
     get:
       operationId: listAgents
@@ -36,10 +42,80 @@ paths:
                   { schema: { $ref: "#/components/schemas/ListResponse" } },
               },
           }
+  /v1/projects/{id}/context:
+    get:
+      operationId: getProjectContext
+      summary: Load durable project intelligence and learning context
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Project context, content: { application/json: { schema: { type: object } } } }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/projects/{id}/context/{category}:
+    put:
+      operationId: updateProjectContext
+      summary: Replace one bounded project context category
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: category, in: path, required: true, schema: { type: string, enum: [architecture, dependencies, environment, database, routes, decisions, known-issues, history, code-index] } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [content], properties: { content: {} } } } }
+      responses:
+        "204": { description: Context updated }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/logs/export:
+    get:
+      operationId: exportAuditLogs
+      summary: Export filtered redacted audit records as CSV
+      responses:
+        "200": { description: CSV audit export, content: { text/csv: { schema: { type: string } } } }
+  /v1/projects/{id}/impact:
+    get:
+      operationId: analyzeProjectImpact
+      summary: Find files, symbols and routes affected by a symbol
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: symbol, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 300 } }
+      responses:
+        "200": { description: Impact graph, content: { application/json: { schema: { type: object } } } }
+        "409": { $ref: "#/components/responses/Error" }
+  /v1/projects/{id}/deployments:
+    post:
+      operationId: deployProject
+      summary: Create an idempotent staged deployment task
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDeployment" }
+      responses:
+        "201": { description: Deployment task created, content: { application/json: { schema: { type: object } } } }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/projects/{id}/tls:
+    post:
+      operationId: configureProjectTls
+      summary: Create an idempotent DNS-to-HTTPS task
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTlsWorkflow" }
+      responses:
+        "201": { description: TLS task created, content: { application/json: { schema: { type: object } } } }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
   /v1/tasks:
     post:
       operationId: createTask
-      summary: Create an explicitly assigned engineering task
+      summary: Create an automatically or explicitly assigned engineering task
       parameters:
         - name: Idempotency-Key
           in: header
@@ -57,6 +133,17 @@ paths:
             content: { application/json: { schema: { type: object } } },
           }
         "422": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /v1/tasks/{id}/run:
+    post:
+      operationId: runTaskController
+      summary: Run or resume the autonomous engineering controller
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Controller completed, content: { application/json: { schema: { type: object } } } }
+        "202": { description: Controller paused for approval, content: { application/json: { schema: { type: object } } } }
+        "409": { $ref: "#/components/responses/Error" }
   /v1/approvals/{id}/decision:
     post:
       operationId: decideApproval
@@ -118,13 +205,38 @@ components:
     CreateTask:
       type: object
       additionalProperties: false
-      required: [projectId, agentId, workspaceId, goal]
+      required: [projectId, goal]
       properties:
         projectId: { type: string, format: uuid }
         agentId: { type: string, format: uuid }
         workspaceId: { type: string, format: uuid }
         goal: { type: string, minLength: 3, maxLength: 20000 }
         maxFixAttempts: { type: integer, minimum: 0, maximum: 5, default: 2 }
+        requiredPermissionLevel: { type: integer, minimum: 0, maximum: 4, default: 2 }
+        technologies: { type: array, maxItems: 30, items: { type: string } }
+    CreateDeployment:
+      type: object
+      additionalProperties: false
+      required: [agentId, workspaceId, environment, branch, service, healthUrl, packageManager]
+      properties:
+        agentId: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        environment: { type: string, enum: [PRODUCTION, DEVELOPMENT, TESTING] }
+        branch: { type: string }
+        service: { type: string }
+        healthUrl: { type: string, format: uri }
+        packageManager: { type: string, enum: [npm, composer] }
+        runMigrations: { type: boolean, default: false }
+    CreateTlsWorkflow:
+      type: object
+      additionalProperties: false
+      required: [agentId, workspaceId, domain, email, webServer]
+      properties:
+        agentId: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        domain: { type: string }
+        email: { type: string, format: email }
+        webServer: { type: string, enum: [nginx, apache, traefik] }
     ToolIntent:
       type: object
       additionalProperties: false

@@ -44,6 +44,7 @@ export async function collectInventory(): Promise<AgentInventory> {
   );
   const disks = await collectDisks();
   return {
+    agentVersion: process.env.AEGIS_AGENT_VERSION ?? "0.1.0",
     os: {
       platform: os.platform(),
       release: os.release(),
@@ -81,7 +82,25 @@ export async function collectInventory(): Promise<AgentInventory> {
       .filter((entry) => entry[1] !== null)
       .map((entry) => entry[0]!),
     collectedAt: new Date().toISOString(),
+    health: {
+      score: calculateHealthScore({
+        cpuPercent: Math.min(100, Math.round(((os.loadavg()[0] ?? 0) / Math.max(1, cpus.length)) * 100)),
+        memoryFreePercent: os.totalmem() ? (os.freemem() / os.totalmem()) * 100 : 0,
+        diskFreePercent: disks[0]?.totalBytes ? (disks[0].freeBytes / disks[0].totalBytes) * 100 : 100,
+        latencyMs: null,
+      }),
+      latencyMs: null,
+      lastHeartbeatAt: new Date().toISOString(),
+    },
   };
+}
+
+export function calculateHealthScore(input: { cpuPercent: number; memoryFreePercent: number; diskFreePercent: number; latencyMs: number | null }): number {
+  const cpuScore = 100 - Math.min(100, Math.max(0, input.cpuPercent));
+  const memoryScore = Math.min(100, Math.max(0, input.memoryFreePercent));
+  const diskScore = Math.min(100, Math.max(0, input.diskFreePercent));
+  const latencyScore = input.latencyMs == null ? 100 : Math.max(0, 100 - input.latencyMs / 10);
+  return Math.round(cpuScore * 0.35 + memoryScore * 0.3 + diskScore * 0.25 + latencyScore * 0.1);
 }
 
 async function collectDisks(): Promise<AgentInventory["disks"]> {

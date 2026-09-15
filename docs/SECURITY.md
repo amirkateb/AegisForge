@@ -4,6 +4,12 @@
 
 AI output, task text, repository contents, tool arguments and Agent metadata are untrusted. The Master validates transport contracts, assignment and policy. The Agent validates the signed-by-context dispatch again and resolves every filesystem target through a canonical Workspace root. Neither side uses an interpolated shell command.
 
+## Context-aware execution firewall
+
+Each execution is evaluated using principal permission, Agent environment, project/workspace binding, trusted tool metadata, structured arguments, affected paths and risk. Recursive deletion aimed at root or protected system paths is denied even at level 4. Mutating production operations require an exact, expiring approval. The Agent repeats its local trusted-tool and permission check before running a process without shell interpolation.
+
+Code indexing excludes dependency, VCS, build and log directories and persists metadata rather than source bodies. Context, evidence, learning and audit payloads pass through secret redaction.
+
 ## Credentials
 
 - `MASTER_API_KEY`: human/operator REST and CLI access

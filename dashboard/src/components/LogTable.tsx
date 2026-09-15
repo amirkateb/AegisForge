@@ -15,10 +15,12 @@ export function LogTable({ logs }: { logs: Audit[] }) {
               <th>Source</th>
               <th>Event</th>
               <th>Duration</th>
+              <th>Evidence</th>
+              <th>Copy</th>
             </tr>
           </thead>
           <tbody>
-            {logs.slice(0, 10).map((log) => (
+            {logs.map((log) => (
               <tr key={log.id}>
                 <td>{new Date(log.timestamp).toLocaleString()}</td>
                 <td>
@@ -29,11 +31,28 @@ export function LogTable({ logs }: { logs: Audit[] }) {
                 <td>{log.agentId?.slice(0, 8) ?? "master"}</td>
                 <td>{log.action}</td>
                 <td>{log.durationMs == null ? "—" : `${log.durationMs} ms`}</td>
+                <td>
+                  {Object.keys(log.metadata ?? {}).length ? (
+                    <details>
+                      <summary>View details</summary>
+                      <pre>{JSON.stringify(log.metadata, null, 2)}</pre>
+                    </details>
+                  ) : "—"}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    aria-label={`Copy ${log.action} audit event`}
+                    onClick={() => void navigator.clipboard.writeText(JSON.stringify(log, null, 2))}
+                  >
+                    Copy
+                  </button>
+                </td>
               </tr>
             ))}
             {logs.length === 0 ? (
               <tr>
-                <td colSpan={5} className="empty">
+                <td colSpan={7} className="empty">
                   No audit events recorded.
                 </td>
               </tr>

@@ -31,6 +31,42 @@ export function evaluatePolicy(input: PolicyInput): PolicyDecision {
   return { type: "ALLOWED" };
 }
 
+export interface ContextPolicyInput extends PolicyInput {
+  environment: "PRODUCTION" | "DEVELOPMENT" | "TESTING";
+  toolName: string;
+  arguments: Record<string, unknown>;
+  affectedPaths: string[];
+}
+
+const protectedPaths = new Set(["/", "/etc", "/boot", "/usr", "/var/lib", "/home"]);
+const mutatingActions = new Set(["install", "restart", "stop", "start", "reload", "pull", "push", "commit", "add", "build", "migrate", "set", "del"]);
+
+export function evaluateContextPolicy(input: ContextPolicyInput): PolicyDecision {
+  const base = evaluatePolicy(input);
+  if (base.type === "DENIED") return base;
+  const serialized = JSON.stringify(input.arguments).toLowerCase();
+  const destructive = /\brm\b/.test(serialized) && /(?:-rf|-fr|--recursive)/.test(serialized);
+  const targetsProtectedPath = input.affectedPaths.some((item) => {
+    const normalized = item.replace(/\/$/, "") || "/";
+    return [...protectedPaths].some((protectedPath) => normalized === protectedPath || (protectedPath !== "/" && normalized.startsWith(`${protectedPath}/`)));
+  });
+  if (destructive && (input.affectedPaths.length === 0 || targetsProtectedPath))
+    return { type: "DENIED", reason: "POLICY_DENIED" };
+  if (base.type === "APPROVAL_REQUIRED") return base;
+  const action = typeof input.arguments.action === "string" ? input.arguments.action.toLowerCase() : "";
+  const readOnlyTools = new Set([
+    "filesystem.read", "filesystem.search", "filesystem.list", "system.info",
+    "system.process.list", "system.service.status", "system.disk",
+    "network.dns", "network.port", "network.http", "network.ping",
+    "docker.container.list", "docker.logs", "wordpress.plugin.analyze",
+    "laravel.migration.analyze", "git.diff.analyze", "git.conflict.analyze",
+  ]);
+  const mutatingTool = !readOnlyTools.has(input.toolName);
+  if (input.environment === "PRODUCTION" && (mutatingActions.has(action) || mutatingTool))
+    return { type: "APPROVAL_REQUIRED", risk: input.risk === "LOW" ? "MEDIUM" : input.risk };
+  return base;
+}
+
 export interface ApprovalGrant {
   id: string;
   taskId: string;

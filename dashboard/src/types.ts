@@ -5,13 +5,17 @@ export type Agent = {
   permissionLevel: number;
   status: string;
   inventory: null | {
+    agentVersion?: string;
+    health?: { score: number; latencyMs: number | null; lastHeartbeatAt: string };
     cpu?: { loadPercent?: number };
     memory?: { totalBytes?: number; freeBytes?: number };
     disks?: Array<{ totalBytes: number; freeBytes: number }>;
+    network?: Array<{ name: string; address: string }>;
   };
   lastSeenAt: string | null;
 };
-export type Project = { id: string; name: string };
+export type Organization = { id: string; name: string };
+export type Project = { id: string; name: string; organizationId: string | null };
 export type Task = {
   id: string;
   projectId: string;
@@ -39,6 +43,7 @@ export type Audit = {
   action: string;
   status: string;
   durationMs: number | null;
+  metadata: Record<string, unknown>;
 };
 export type Tool = {
   name: string;
@@ -49,6 +54,7 @@ export type Tool = {
 };
 export type Snapshot = {
   agents: Agent[];
+  organizations: Organization[];
   projects: Project[];
   tasks: Task[];
   approvals: Approval[];

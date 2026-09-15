@@ -9,12 +9,14 @@ import fastifyStatic from "@fastify/static";
 import { z } from "zod";
 import {
   CreateTaskSchema,
+  CodeIndexSchema,
   EnvironmentSchema,
   IdSchema,
   PermissionLevelSchema,
+  ProjectContextCategorySchema,
   ToolIntentSchema,
 } from "../../packages/contracts/src/index.js";
-import { evaluatePolicy } from "../../packages/policy/src/index.js";
+import { evaluateContextPolicy } from "../../packages/policy/src/index.js";
 import type { PlatformStore } from "./domain.js";
 import {
   requireRole,
@@ -31,6 +33,11 @@ import {
 import { redactEvent } from "./observability/redaction.js";
 import { AgentHub } from "./agents/agent-hub.js";
 import { createMcpNodeHandler } from "./integrations/mcp.js";
+import { selectAgent } from "../../controller/src/agent-selector.js";
+import { findAffectedCode } from "../../controller/src/code-intelligence.js";
+import type { PlanningModel } from "../../controller/src/planner.js";
+import { TaskRunner } from "./task-runner.js";
+import { createDeploymentPlan, createTlsPlan } from "../../tools/src/workflows.js";
 
 export interface ServerSecrets {
   masterApiKey: string;
@@ -43,6 +50,7 @@ export interface BuildServerOptions {
   secrets: ServerSecrets;
   logger?: boolean;
   allowedOrigins?: string[];
+  planningModel?: PlanningModel;
 }
 
 const AgentInput = z.object({
@@ -53,7 +61,9 @@ const AgentInput = z.object({
 const ProjectInput = z.object({
   name: z.string().trim().min(2).max(120),
   repositoryUrl: z.string().url().nullable().default(null),
+  organizationId: IdSchema.nullable().optional(),
 });
+const OrganizationInput = z.object({ name: z.string().trim().min(2).max(120) });
 const WorkspaceInput = z.object({
   projectId: IdSchema,
   agentId: IdSchema,
@@ -77,8 +87,40 @@ const ToolRunInput = z.object({
 });
 const AgentWorkspaceInput = z.object({
   projectName: z.string().trim().min(2).max(120),
+  organizationId: IdSchema.nullable().optional(),
   rootPath: z.string().startsWith("/").max(2000),
   repositoryUrl: z.string().url().nullable().default(null),
+});
+const AuditQuery = z.object({
+  status: z.string().max(50).optional(),
+  action: z.string().max(200).optional(),
+  search: z.string().max(500).optional(),
+  limit: z.coerce.number().int().min(1).max(1000).default(200),
+});
+const PlannedAssignment = z.object({ agentId: IdSchema, workspaceId: IdSchema });
+const DeploymentInput = PlannedAssignment.extend({
+  environment: EnvironmentSchema,
+  branch: z.string().regex(/^[A-Za-z0-9._\/-]{1,200}$/),
+  service: z.string().regex(/^[A-Za-z0-9_.@-]{1,200}$/),
+  healthUrl: z.string().url().refine((value) => value.startsWith("http://") || value.startsWith("https://")),
+  packageManager: z.enum(["npm", "composer"]),
+  runMigrations: z.boolean().default(false),
+});
+const TlsInput = PlannedAssignment.extend({
+  domain: z.string().regex(/^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/),
+  email: z.string().email(),
+  webServer: z.enum(["nginx", "apache", "traefik"]),
+});
+const TaskRequestInput = z.object({
+  projectId: IdSchema,
+  agentId: IdSchema.optional(),
+  workspaceId: IdSchema.optional(),
+  goal: z.string().trim().min(3).max(20_000),
+  maxFixAttempts: z.number().int().min(0).max(5).default(2),
+  requiredPermissionLevel: PermissionLevelSchema.default(2),
+  technologies: z.array(z.string().trim().min(1).max(100)).max(30).default([]),
+}).refine((value) => Boolean(value.agentId) === Boolean(value.workspaceId), {
+  message: "agentId and workspaceId must be provided together",
 });
 
 function requestHash(value: unknown): string {
@@ -164,6 +206,15 @@ export async function buildServer(
     return { ok: true };
   });
   const agentHub = new AgentHub(options.store);
+  const taskRunner = options.planningModel ? new TaskRunner(options.store, agentHub, options.planningModel) : null;
+  const continueTask = (taskId: string) => {
+    if (!taskRunner) return;
+    void taskRunner.run(taskId).catch(async (error) => {
+      await options.store.updateTaskStatus(taskId, "FAILED");
+      const task = await options.store.findTask(taskId);
+      await options.store.appendAudit({ agentId: task?.agentId ?? null, projectId: task?.projectId ?? null, userId: "controller", action: "task.controller.failed", durationMs: null, status: "FAILED", metadata: { taskId, error: error instanceof Error ? error.message : String(error) } });
+    });
+  };
   app.get("/v1/agent/connect", { websocket: true }, async (socket, request) => {
     const agentId = request.headers["x-agent-id"];
     const match = /^Bearer\s+(.+)$/i.exec(
@@ -246,11 +297,14 @@ export async function buildServer(
           },
         });
     const input = AgentWorkspaceInput.parse(request.body);
-    let project = await options.store.findProjectByName(input.projectName);
+    if (input.organizationId && !(await options.store.findOrganization(input.organizationId)))
+      return reply.code(422).send({ error: { code: "INVALID_REFERENCE", message: "Organization does not exist", requestId: request.id } });
+    let project = await options.store.findProjectByName(input.projectName, input.organizationId ?? null);
     if (!project)
       project = await options.store.createProject({
         name: input.projectName,
         repositoryUrl: input.repositoryUrl,
+        organizationId: input.organizationId ?? null,
       });
     const workspace = await options.store.createWorkspace({
       projectId: project.id,
@@ -270,7 +324,7 @@ export async function buildServer(
   });
 
   app.get("/v1/agents", { preHandler: master }, async () => ({
-    data: await options.store.listAgents(),
+    data: (await options.store.listAgents()).map(({ tokenDigest: _tokenDigest, ...agent }) => agent),
   }));
   app.post("/v1/agents", { preHandler: master }, async (request, reply) => {
     const input = AgentInput.parse(request.body);
@@ -390,13 +444,20 @@ export async function buildServer(
   app.get("/v1/projects", { preHandler: master }, async () => ({
     data: await options.store.listProjects(),
   }));
-  app.post("/v1/projects", { preHandler: master }, async (request, reply) =>
-    reply
-      .code(201)
-      .send(
-        await options.store.createProject(ProjectInput.parse(request.body)),
-      ),
+  app.get("/v1/organizations", { preHandler: master }, async () => ({ data: await options.store.listOrganizations() }));
+  app.post("/v1/organizations", { preHandler: master }, async (request, reply) =>
+    reply.code(201).send(await options.store.createOrganization(OrganizationInput.parse(request.body))),
   );
+  app.post("/v1/projects", { preHandler: master }, async (request, reply) => {
+    const input = ProjectInput.parse(request.body);
+    if (input.organizationId && !(await options.store.findOrganization(input.organizationId)))
+      return reply.code(422).send({ error: { code: "INVALID_REFERENCE", message: "Organization does not exist", requestId: request.id } });
+    return reply.code(201).send(await options.store.createProject({
+      name: input.name,
+      repositoryUrl: input.repositoryUrl,
+      organizationId: input.organizationId ?? null,
+    }));
+  });
   app.post("/v1/workspaces", { preHandler: master }, async (request, reply) => {
     const input = WorkspaceInput.parse(request.body);
     if (
@@ -435,8 +496,29 @@ export async function buildServer(
             },
           });
       }
-      const input = CreateTaskSchema.parse(request.body);
-      const hash = requestHash(input);
+      const requested = TaskRequestInput.parse(request.body);
+      const hash = requestHash(requested);
+      let assignment: { agentId: string; workspaceId: string };
+      if (requested.agentId && requested.workspaceId) {
+        assignment = { agentId: requested.agentId, workspaceId: requested.workspaceId };
+      } else {
+        const selection = selectAgent({
+          projectId: requested.projectId,
+          requiredPermissionLevel: requested.requiredPermissionLevel,
+          technologies: requested.technologies,
+          agents: await options.store.listAgents(),
+          workspaces: await options.store.listWorkspaces(requested.projectId),
+        });
+        if (selection.type !== "SELECTED")
+          return reply.code(409).send({ error: { code: "AGENT_SELECTION_REQUIRED", message: "No unique viable Agent assignment is available", requestId: request.id, details: selection } });
+        assignment = selection;
+      }
+      const input = CreateTaskSchema.parse({
+        projectId: requested.projectId,
+        ...assignment,
+        goal: requested.goal,
+        maxFixAttempts: requested.maxFixAttempts,
+      });
       const [agent, project, workspace] = await Promise.all([
         options.store.findAgent(input.agentId),
         options.store.findProject(input.projectId),
@@ -486,9 +568,49 @@ export async function buildServer(
         status: "SUCCESS",
         metadata: { taskId: task.id },
       });
+      continueTask(task.id);
       return reply.code(201).send(task);
     },
   );
+  app.post("/v1/tasks/:id/run", { preHandler: requireRole(options.secrets, ["MASTER", "MCP"]) }, async (request, reply) => {
+    if (!taskRunner)
+      return reply.code(409).send({ error: { code: "PLANNER_UNAVAILABLE", message: "Configure OPENAI_API_KEY to run autonomous tasks", requestId: request.id } });
+    const id = IdSchema.parse((request.params as { id: unknown }).id);
+    const result = await taskRunner.run(id);
+    return reply.code(result.status === "WAITING_APPROVAL" ? 202 : 200).send(result);
+  });
+  app.post("/v1/projects/:id/deployments", { preHandler: requireRole(options.secrets, ["MASTER", "MCP"]) }, async (request, reply) => {
+    const projectId = IdSchema.parse((request.params as { id: unknown }).id);
+    const key = request.headers["idempotency-key"];
+    if (typeof key !== "string" || key.length < 8 || key.length > 200)
+      return reply.code(400).send({ error: { code: "IDEMPOTENCY_KEY_REQUIRED", message: "A valid Idempotency-Key is required", requestId: request.id } });
+    const input = DeploymentInput.parse(request.body);
+    const assignment = await validatePlannedAssignment(options.store, projectId, input.agentId, input.workspaceId);
+    if (!assignment.ok)
+      return reply.code(422).send({ error: { code: "INVALID_ASSIGNMENT", message: assignment.reason, requestId: request.id } });
+    if (assignment.agent.environment !== input.environment)
+      return reply.code(422).send({ error: { code: "ENVIRONMENT_MISMATCH", message: "Deployment environment must match the assigned Agent", requestId: request.id } });
+    const plan = createDeploymentPlan(input);
+    const result = await options.store.createTaskIdempotently(key, requestHash({ projectId, ...input }), { projectId, agentId: input.agentId, workspaceId: input.workspaceId, goal: plan.summary, maxFixAttempts: 1 });
+    if (result.type === "MISMATCH") return reply.code(422).send({ error: { code: "IDEMPOTENCY_MISMATCH", message: "Idempotency key was used with a different deployment", requestId: request.id } });
+    if (result.type === "CREATED") { await options.store.saveTaskPlan(result.task.id, plan); continueTask(result.task.id); }
+    return reply.code(result.type === "CREATED" ? 201 : 200).send({ task: result.task, plan });
+  });
+  app.post("/v1/projects/:id/tls", { preHandler: requireRole(options.secrets, ["MASTER", "MCP"]) }, async (request, reply) => {
+    const projectId = IdSchema.parse((request.params as { id: unknown }).id);
+    const key = request.headers["idempotency-key"];
+    if (typeof key !== "string" || key.length < 8 || key.length > 200)
+      return reply.code(400).send({ error: { code: "IDEMPOTENCY_KEY_REQUIRED", message: "A valid Idempotency-Key is required", requestId: request.id } });
+    const input = TlsInput.parse(request.body);
+    const assignment = await validatePlannedAssignment(options.store, projectId, input.agentId, input.workspaceId);
+    if (!assignment.ok)
+      return reply.code(422).send({ error: { code: "INVALID_ASSIGNMENT", message: assignment.reason, requestId: request.id } });
+    const plan = createTlsPlan(input);
+    const result = await options.store.createTaskIdempotently(key, requestHash({ projectId, ...input }), { projectId, agentId: input.agentId, workspaceId: input.workspaceId, goal: plan.summary, maxFixAttempts: 1 });
+    if (result.type === "MISMATCH") return reply.code(422).send({ error: { code: "IDEMPOTENCY_MISMATCH", message: "Idempotency key was used with different TLS input", requestId: request.id } });
+    if (result.type === "CREATED") { await options.store.saveTaskPlan(result.task.id, plan); continueTask(result.task.id); }
+    return reply.code(result.type === "CREATED" ? 201 : 200).send({ task: result.task, plan });
+  });
 
   app.get("/v1/approvals", { preHandler: master }, async () => ({
     data: await options.store.listApprovals(),
@@ -523,12 +645,57 @@ export async function buildServer(
         status: approval.status,
         metadata: { approvalId: id, decision: input.decision },
       });
+      if (approval.status === "APPROVED") continueTask(approval.taskId);
       return approval;
     },
   );
-  app.get("/v1/logs", { preHandler: master }, async () => ({
-    data: await options.store.listAudits(),
-  }));
+  app.get("/v1/projects/:id/context", { preHandler: master }, async (request, reply) => {
+    const id = IdSchema.parse((request.params as { id: unknown }).id);
+    if (!(await options.store.findProject(id)))
+      return reply.code(404).send({ error: { code: "NOT_FOUND", message: "Project not found", requestId: request.id } });
+    return options.store.loadProjectContext(id);
+  });
+  app.put("/v1/projects/:id/context/:category", { preHandler: master }, async (request, reply) => {
+    const id = IdSchema.parse((request.params as { id: unknown }).id);
+    const category = ProjectContextCategorySchema.parse((request.params as { category: unknown }).category);
+    if (!(await options.store.findProject(id)))
+      return reply.code(404).send({ error: { code: "NOT_FOUND", message: "Project not found", requestId: request.id } });
+    const input = z.object({ content: z.unknown() }).parse(request.body);
+    const content = parseContextContent(category, input.content);
+    const encoded = JSON.stringify(content);
+    const bytes = Buffer.byteLength(encoded);
+    if (bytes > 1_500_000)
+      return reply.code(413).send({ error: { code: "CONTEXT_TOO_LARGE", message: "Project context exceeds 1.5 MB", requestId: request.id } });
+    await options.store.saveProjectMemory(id, category, content);
+    await options.store.appendAudit({ agentId: null, projectId: id, userId: "master", action: `project.context.${category}.updated`, durationMs: null, status: "SUCCESS", metadata: { bytes } });
+    return reply.code(204).send();
+  });
+  app.get("/v1/projects/:id/impact", { preHandler: master }, async (request, reply) => {
+    const id = IdSchema.parse((request.params as { id: unknown }).id);
+    const query = z.object({ symbol: z.string().trim().min(1).max(300) }).parse(request.query);
+    const context = await options.store.loadProjectContext(id);
+    if (!context.codeIndex)
+      return reply.code(409).send({ error: { code: "CODE_INDEX_UNAVAILABLE", message: "Index the project before requesting impact", requestId: request.id } });
+    return findAffectedCode(context.codeIndex, query.symbol);
+  });
+  const filteredAudits = async (rawQuery: unknown) => {
+    const query = AuditQuery.parse(rawQuery);
+    const search = query.search?.toLowerCase();
+    return (await options.store.listAudits()).filter((event) =>
+      (!query.status || event.status === query.status) &&
+      (!query.action || event.action.startsWith(query.action)) &&
+      (!search || JSON.stringify(event).toLowerCase().includes(search)),
+    ).slice(0, query.limit);
+  };
+  app.get("/v1/logs/export", { preHandler: master }, async (request, reply) => {
+    const events = await filteredAudits(request.query);
+    const rows = [
+      ["timestamp", "agentId", "projectId", "userId", "action", "durationMs", "status", "metadata"],
+      ...events.map((event) => [event.timestamp.toISOString(), event.agentId, event.projectId, event.userId, event.action, event.durationMs, event.status, JSON.stringify(event.metadata)]),
+    ];
+    return reply.type("text/csv; charset=utf-8").header("content-disposition", "attachment; filename=aegisforge-audit.csv").send(rows.map((row) => row.map(csvCell).join(",")).join("\n") + "\n");
+  });
+  app.get("/v1/logs", { preHandler: master }, async (request) => ({ data: await filteredAudits(request.query) }));
   app.post(
     "/v1/tools/run",
     { preHandler: requireRole(options.secrets, ["MASTER", "MCP"]) },
@@ -571,11 +738,15 @@ export async function buildServer(
               requestId: request.id,
             },
           });
-      const decision = evaluatePolicy({
+      const decision = evaluateContextPolicy({
         permissionLevel: agent.permissionLevel,
         requiredLevel: tool.requiredLevel,
         risk: tool.risk,
         approval: tool.approval,
+        environment: agent.environment,
+        toolName: tool.name,
+        arguments: input.arguments,
+        affectedPaths: input.affectedResources,
       });
       if (decision.type === "DENIED")
         return reply
@@ -675,7 +846,7 @@ export async function buildServer(
     },
   );
 
-  const mcpHandler = createMcpNodeHandler(options.store);
+  const mcpHandler = createMcpNodeHandler(options.store, taskRunner);
   app.all(
     "/mcp",
     { preHandler: requireRole(options.secrets, ["MCP"]) },
@@ -687,15 +858,17 @@ export async function buildServer(
 
   const dashboardSession = requireSession(sessionSecret);
   app.get("/v1/ui/snapshot", { preHandler: dashboardSession }, async () => {
-    const [agents, projects, tasks, approvals, logs] = await Promise.all([
+    const [agents, organizations, projects, tasks, approvals, logs] = await Promise.all([
       options.store.listAgents(),
+      options.store.listOrganizations(),
       options.store.listProjects(),
       options.store.listTasks(),
       options.store.listApprovals(),
       options.store.listAudits(),
     ]);
     return {
-      agents,
+      agents: agents.map(({ tokenDigest: _tokenDigest, ...agent }) => agent),
+      organizations,
       projects,
       tasks,
       approvals,
@@ -733,6 +906,7 @@ export async function buildServer(
         status: approval.status,
         metadata: { approvalId: id, decision: input.decision },
       });
+      if (approval.status === "APPROVED") continueTask(approval.taskId);
       return approval;
     },
   );
@@ -746,4 +920,25 @@ export async function buildServer(
   }
 
   return app;
+}
+
+function csvCell(value: unknown): string {
+  let text = value == null ? "" : String(value);
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function parseContextContent(category: string, content: unknown): unknown {
+  if (category === "code-index") return CodeIndexSchema.parse(content);
+  if (category === "decisions" || category === "known-issues") return z.string().max(1_000_000).parse(content);
+  if (category === "history") return z.array(z.unknown()).max(500).parse(content);
+  return z.record(z.string(), z.unknown()).parse(content);
+}
+
+async function validatePlannedAssignment(store: PlatformStore, projectId: string, agentId: string, workspaceId: string) {
+  const [project, agent, workspace] = await Promise.all([store.findProject(projectId), store.findAgent(agentId), store.findWorkspace(workspaceId)]);
+  if (!project) return { ok: false as const, reason: "Project does not exist" };
+  if (!agent || ["DISABLED", "REVOKED"].includes(agent.status)) return { ok: false as const, reason: "Agent is unavailable" };
+  if (!workspace || workspace.projectId !== projectId || workspace.agentId !== agentId) return { ok: false as const, reason: "Workspace is not bound to this Project and Agent" };
+  return { ok: true as const, agent, workspace };
 }

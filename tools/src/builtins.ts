@@ -29,6 +29,11 @@ const searchInput = z.object({
   query: z.string().min(1).max(1000),
   maxResults: z.number().int().min(1).max(1000).default(200),
 });
+const listInput = z.object({
+  path: z.string().default("."),
+  depth: z.number().int().min(0).max(12).default(6),
+  maxFiles: z.number().int().min(1).max(20_000).default(5000),
+});
 
 function definition(
   name: string,
@@ -140,6 +145,45 @@ export const searchFilesTool: ToolPlugin = {
       filesVisited,
       truncated: traversalTruncated || results.length >= input.maxResults,
     };
+  },
+};
+
+export const listFilesTool: ToolPlugin = {
+  definition: definition(
+    "filesystem.list",
+    "List bounded workspace files for project and code intelligence",
+    0,
+    "LOW",
+    "NEVER",
+    {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        depth: { type: "integer", minimum: 0, maximum: 12 },
+        maxFiles: { type: "integer", minimum: 1, maximum: 20000 },
+      },
+    },
+  ),
+  async execute(arguments_, context) {
+    const input = listInput.parse(arguments_);
+    const root = await context.resolvePath(input.path);
+    const files: string[] = [];
+    let truncated = false;
+    const walk = async (current: string, depth: number): Promise<void> => {
+      if (depth > input.depth || files.length >= input.maxFiles) {
+        truncated = true;
+        return;
+      }
+      for (const entry of await fs.readdir(current, { withFileTypes: true })) {
+        if (entry.isSymbolicLink() || [".git", "node_modules", "vendor", "dist", "build"].includes(entry.name)) continue;
+        const target = path.join(current, entry.name);
+        if (entry.isDirectory()) await walk(target, depth + 1);
+        else if (entry.isFile()) files.push(path.relative(context.workspaceRoot, target));
+        if (files.length >= input.maxFiles) { truncated = true; break; }
+      }
+    };
+    await walk(root, 0);
+    return { files: files.sort(), truncated };
   },
 };
 
@@ -346,6 +390,7 @@ export const systemInfoTool: ToolPlugin = {
 
 export const builtInTools = [
   readFileTool,
+  listFilesTool,
   searchFilesTool,
   writeFileTool,
   editFileTool,

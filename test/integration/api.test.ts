@@ -148,4 +148,84 @@ describe("Master REST API", () => {
       scope: "ONCE",
     });
   });
+
+  it("automatically assigns a task to the best online project Agent", async () => {
+    const agent = await store.createAgent({
+      name: "auto-php",
+      environment: "DEVELOPMENT",
+      permissionLevel: 2,
+      tokenDigest: "digest",
+    });
+    await store.updateAgentPresence(agent.id, {
+      cpu: { loadPercent: 10 },
+      memory: { totalBytes: 100, freeBytes: 80 },
+      runtimes: { php: "8.4" },
+    }, new Date());
+    const project = await store.createProject({ name: "auto-project", repositoryUrl: null });
+    const workspace = await store.createWorkspace({ projectId: project.id, agentId: agent.id, rootPath: "/srv/auto" });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/tasks",
+      headers: { ...masterHeaders, "idempotency-key": "auto-task-1" },
+      payload: {
+        projectId: project.id,
+        goal: "Run Laravel tests",
+        requiredPermissionLevel: 2,
+        technologies: ["php", "laravel"],
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({ agentId: agent.id, workspaceId: workspace.id });
+  });
+
+  it("returns durable project context and filters audit logs", async () => {
+    const project = await store.createProject({ name: "context-project", repositoryUrl: null });
+    await store.saveProjectMemory(project.id, "decisions", { markdown: "Keep REST v1 stable" });
+    await store.appendAudit({ agentId: null, projectId: project.id, userId: "test", action: "security.decision", durationMs: 1, status: "DENIED", metadata: { reason: "test" } });
+    const context = await app.inject({ method: "GET", url: `/v1/projects/${project.id}/context`, headers: masterHeaders });
+    expect(context.statusCode).toBe(200);
+    expect(context.json().decisions.markdown).toContain("REST v1");
+    const logs = await app.inject({ method: "GET", url: `/v1/logs?status=DENIED&search=security`, headers: masterHeaders });
+    expect(logs.statusCode).toBe(200);
+    expect(logs.json().data).toHaveLength(1);
+    const exported = await app.inject({ method: "GET", url: "/v1/logs/export?status=DENIED", headers: masterHeaders });
+    expect(exported.statusCode).toBe(200);
+    expect(exported.headers["content-type"]).toContain("text/csv");
+    expect(exported.body).toContain("security.decision");
+  });
+
+  it("keeps projects grouped across multiple organizations", async () => {
+    const first = await app.inject({ method: "POST", url: "/v1/organizations", headers: masterHeaders, payload: { name: "Platform" } });
+    const second = await app.inject({ method: "POST", url: "/v1/organizations", headers: masterHeaders, payload: { name: "Commerce" } });
+    expect(first.statusCode).toBe(201);
+    expect(second.statusCode).toBe(201);
+    const firstProject = await app.inject({ method: "POST", url: "/v1/projects", headers: masterHeaders, payload: { name: "storefront", organizationId: first.json().id } });
+    const project = await app.inject({ method: "POST", url: "/v1/projects", headers: masterHeaders, payload: { name: "storefront", organizationId: second.json().id } });
+    expect(firstProject.statusCode).toBe(201);
+    expect(project.statusCode).toBe(201);
+    expect(project.json().organizationId).toBe(second.json().id);
+    const organizations = await app.inject({ method: "GET", url: "/v1/organizations", headers: masterHeaders });
+    expect(organizations.json().data).toHaveLength(2);
+    expect((await store.listProjects()).filter((item) => item.name === "storefront")).toHaveLength(2);
+  });
+
+  it("creates idempotent deployment and TLS tasks with persisted executable plans", async () => {
+    const agent = await store.createAgent({ name: "operations-agent", environment: "PRODUCTION", permissionLevel: 3, tokenDigest: "digest" });
+    const project = await store.createProject({ name: "operations-project", repositoryUrl: null });
+    const workspace = await store.createWorkspace({ projectId: project.id, agentId: agent.id, rootPath: "/srv/operations" });
+    const deployment = await app.inject({
+      method: "POST", url: `/v1/projects/${project.id}/deployments`,
+      headers: { ...masterHeaders, "idempotency-key": "deployment-1" },
+      payload: { agentId: agent.id, workspaceId: workspace.id, environment: "PRODUCTION", branch: "main", service: "storefront", healthUrl: "https://store.example.com/healthz", packageManager: "npm", runMigrations: true },
+    });
+    expect(deployment.statusCode).toBe(201);
+    expect((await store.loadTaskPlan(deployment.json().task.id))?.steps.at(-1)?.toolName).toBe("network.http");
+    const tls = await app.inject({
+      method: "POST", url: `/v1/projects/${project.id}/tls`,
+      headers: { ...masterHeaders, "idempotency-key": "tls-workflow-1" },
+      payload: { agentId: agent.id, workspaceId: workspace.id, domain: "store.example.com", email: "ops@example.com", webServer: "nginx" },
+    });
+    expect(tls.statusCode).toBe(201);
+    expect(tls.json().plan.steps.map((step: { title: string }) => step.title)).toContain("Verify HTTPS");
+  });
 });

@@ -59,5 +59,20 @@ describe("persistent engineering workflow", () => {
     expect(JSON.stringify(steps[0]?.evidence)).not.toContain(
       "must-not-persist",
     );
+    await store.saveProjectMemory(project.id, "decisions", {
+      markdown: "Use bounded indexing",
+    });
+    await store.saveProjectMemory(project.id, "known-issues", {
+      markdown: "Live TLS requires a delegated domain",
+    });
+    await store.appendProjectHistory(project.id, {
+      taskId: task.id,
+      outcome: "COMPLETED",
+      summary: "Indexed project",
+    });
+    const context = await store.loadProjectContext(project.id);
+    expect(context.decisions).toMatchObject({ markdown: "Use bounded indexing" });
+    expect(context.knownIssues).toMatchObject({ markdown: expect.stringContaining("TLS") });
+    expect(context.history).toEqual(expect.arrayContaining([expect.objectContaining({ taskId: task.id })]));
   });
 });

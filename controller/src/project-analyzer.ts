@@ -78,12 +78,14 @@ export async function analyzeProject(
     framework.add("Python");
   if (contents.has("go.mod")) framework.add("Go");
   if (contents.has("Cargo.toml")) framework.add("Rust");
+  if (files.some((name) => /(^|\/)database\/migrations\//.test(name)))
+    databases.add("Laravel migrations");
   const routeFiles = files
     .filter((name) =>
       /(^|\/)(routes?|app\/api|pages\/api)(\/|\.|$)/i.test(name),
     )
     .slice(0, 500);
-  const architecture = files
+  const genericArchitecture = files
     .filter((name) =>
       /(^|\/)(src|app|server|agent|controller|domain|infrastructure|packages)(\/|$)/.test(
         name,
@@ -92,12 +94,24 @@ export async function analyzeProject(
     .map((name) => name.split("/").slice(0, 2).join("/"))
     .filter((name, index, all) => all.indexOf(name) === index)
     .slice(0, 100);
+  const architecture = new Set(genericArchitecture);
+  const conventions: Array<[RegExp, string]> = [
+    [/(^|\/)Controllers?\//i, "Controllers"],
+    [/(^|\/)Models?\//i, "Models"],
+    [/(^|\/)Services?\//i, "Services"],
+    [/(^|\/)Jobs?\//i, "Jobs"],
+    [/(^|\/)Queues?\//i, "Queues"],
+    [/(^|\/)routes?\//i, "Routes"],
+    [/(^|\/)migrations?\//i, "Migrations"],
+  ];
+  for (const [pattern, label] of conventions)
+    if (files.some((name) => pattern.test(name))) architecture.add(label);
   return ProjectProfileSchema.parse({
     framework: [...framework],
     dependencies: [...dependencies],
     databases: [...databases],
     routes: routeFiles,
-    architecture,
+    architecture: [...architecture].slice(0, 100),
     importantFiles: probes.filter((name) => set.has(name)),
   });
 }

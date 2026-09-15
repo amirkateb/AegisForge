@@ -1,36 +1,107 @@
-# AegisForge task list
+# AegisForge Phase 2 task list
 
-## Foundation
+## Intelligence foundation
 
-- [x] T01 Bootstrap npm workspace and strict TypeScript configuration. Verify: clean build.
-- [x] T02 Define versioned contracts and errors. Verify: schema contract tests.
-- [x] T03 Implement permission/risk/approval policy. Verify: policy tests.
-- [x] T04 Add PostgreSQL schema and repositories. Verify: migration and repository build.
-- [x] T05 Add structured redacted audit logging. Verify: secret-leak security tests.
+### P201: Add Phase 2 contracts
 
-## Secure Agents
+**Status:** Complete.
 
-- [x] T06 Implement Agent enrollment, hashing, rotation, disable and revoke. Verify: lifecycle integration tests.
-- [x] T07 Implement authenticated WebSocket v1 protocol and heartbeat. Verify: real connection test.
-- [x] T08 Collect host inventory and installed-tool metadata. Verify: normalized inventory.
-- [x] T09 Enforce workspace and command policy locally. Verify: traversal/symlink/injection tests.
+**Acceptance criteria:** Context categories, code graph, health and automatic-assignment inputs are schema validated and backward compatible.
 
-## Engineering workflow
+**Verification:** Contract/type tests and `npm run typecheck`.
 
-- [x] T10 Implement Project and Workspace registration. Verify: authorization tests.
-- [x] T11 Implement plugin registry and core read/search/edit/execute/system tools. Verify: registry validation and build.
-- [x] T12 Implement Understand/Plan/Execute/Verify/Fix task state machine. Verify: loop and transition tests.
-- [x] T13 Define durable project memory and execution evidence schema.
-- [x] T14 Implement approval once/session/deny leases. Verify: expiration and replay behavior.
+**Dependencies:** None.
 
-## Interfaces and operations
+### P202: Build project and code intelligence
 
-- [x] T15 Expose REST v1 and idempotent mutations. Verify: API integration suite.
-- [x] T16 Expose MCP and Custom GPT/OpenAPI adapters. Verify: typed build and documented contract.
-- [x] T17 Build CLI commands. Verify: strict build.
-- [x] T18 Build responsive operations dashboard. Verify: live browser and accessibility checks.
-- [x] T19 Build transactional Master/Agent/Both installer and guarded uninstall. Verify: rollback tests.
-- [x] T20 Add Docker/systemd/Nginx/TLS deployment assets. Verify: template and health-path tests.
-- [x] T21 Complete docs, sample project and end-to-end test environment. Verify: full release checklist.
+**Status:** Complete.
 
-Live Let's Encrypt issuance and systemd installation require a real Linux host, PostgreSQL instance and delegated domain; the installer validates and performs these steps, but they cannot be exercised in the repository-only test environment.
+**Acceptance criteria:** Detect common project structures; extract bounded symbols, imports, routes and database entities; return affected symbols/files.
+
+**Verification:** `vitest run test/unit/project-intelligence.test.ts`.
+
+**Dependencies:** P201.
+
+### P203: Make project memory durable and complete
+
+**Status:** Complete.
+
+**Acceptance criteria:** Load/save architecture, dependencies, environment, database, routes, decisions, issues and bounded history independently in both stores.
+
+**Verification:** `vitest run test/integration/project-memory.test.ts`.
+
+**Dependencies:** P201-P202.
+
+## Agent brain and secure routing
+
+### P204: Select an Agent deterministically
+
+**Status:** Complete.
+
+**Acceptance criteria:** Only online project workspaces are eligible; permission, load, disk and technology affect score; failure returns actionable reasons.
+
+**Verification:** `vitest run test/unit/agent-selection.test.ts`.
+
+**Dependencies:** P201.
+
+### P205: Enforce context-based policy
+
+**Status:** Complete.
+
+**Acceptance criteria:** Existing behavior remains; environment, dangerous commands, protected paths and risk influence decisions.
+
+**Verification:** `vitest run test/unit/policy.test.ts test/security/context-policy.test.ts`.
+
+**Dependencies:** P201.
+
+### P206: Implement resumable engineering cycle
+
+**Status:** Complete.
+
+**Acceptance criteria:** Context load precedes planning, evidence/fixes persist, failures are diagnosed, learning is recorded and interrupted steps remain resumable.
+
+**Verification:** controller and memory suites.
+
+**Dependencies:** P202-P205.
+
+### P207: Expose intelligence and automatic assignment APIs
+
+**Status:** Complete.
+
+**Acceptance criteria:** Explicit task creation remains; omitted assignment selects a unique Agent/workspace; context and impact endpoints are typed.
+
+**Verification:** API integration suite.
+
+**Dependencies:** P203-P206.
+
+## Operations and release
+
+### P208: Expand typed operational tools
+
+**Status:** Complete.
+
+**Acceptance criteria:** Dedicated tools cover requested Linux, Docker, Laravel, WordPress, Git and database operations; deployment/TLS workflows are staged and verifiable.
+
+**Verification:** registry and workflow tests.
+
+**Dependencies:** P205.
+
+### P209: Complete monitoring and logs
+
+**Status:** Complete.
+
+**Acceptance criteria:** Heartbeat, latency, version and health score are visible; logs support bounded filters/export and remain redacted.
+
+**Verification:** connection, API and security suites.
+
+**Dependencies:** P204.
+
+### P210: Update dashboard and documentation
+
+**Status:** Complete.
+
+**Acceptance criteria:** Dashboard shows health/context; all requested English docs and OpenAPI match behavior.
+
+**Verification:** dashboard build, OpenAPI inspection and full `npm run check`.
+
+**Dependencies:** P207-P209.

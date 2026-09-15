@@ -37,9 +37,13 @@ export function AgentTable({
               <th>Status</th>
               <th>Environment</th>
               <th>Project</th>
+              <th>Health</th>
               <th>CPU</th>
               <th>RAM</th>
               <th>Disk</th>
+              <th>Network</th>
+              <th>Latency</th>
+              <th>Version</th>
               <th>Last seen</th>
             </tr>
           </thead>
@@ -65,9 +69,13 @@ export function AgentTable({
                       ? (projectById.get(task.projectId) ?? "Unknown")
                       : "—"}
                   </td>
+                  <td>{percent(agent.inventory?.health?.score)}</td>
                   <td>{percent(agent.inventory?.cpu?.loadPercent)}</td>
                   <td>{percent(memory(agent))}</td>
                   <td>{percent(disk(agent))}</td>
+                  <td>{agent.inventory?.network?.length ?? "—"}</td>
+                  <td>{agent.inventory?.health?.latencyMs == null ? "—" : `${agent.inventory.health.latencyMs} ms`}</td>
+                  <td>{agent.inventory?.agentVersion ?? "—"}</td>
                   <td>
                     {agent.lastSeenAt
                       ? new Intl.RelativeTimeFormat("en", {
@@ -90,7 +98,7 @@ export function AgentTable({
             })}
             {agents.length === 0 ? (
               <tr>
-                <td colSpan={8} className="empty">
+                <td colSpan={12} className="empty">
                   No Agents enrolled yet.
                 </td>
               </tr>

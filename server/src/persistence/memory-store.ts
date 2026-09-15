@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type {
   EngineeringPlan,
+  ProjectContext,
+  ProjectContextCategory,
   ProjectProfile,
 } from "../../../packages/contracts/src/index.js";
 import type {
@@ -8,6 +10,7 @@ import type {
   ApprovalRecord,
   AuditRecord,
   PlatformStore,
+  OrganizationRecord,
   ProjectRecord,
   TaskRecord,
   TaskStepRecord,
@@ -17,6 +20,7 @@ import { redactEvent } from "../observability/redaction.js";
 
 export class MemoryStore implements PlatformStore {
   private agents: AgentRecord[] = [];
+  private organizations: OrganizationRecord[] = [];
   private projects: ProjectRecord[] = [];
   private workspaces: WorkspaceRecord[] = [];
   private tasks: TaskRecord[] = [];
@@ -27,7 +31,21 @@ export class MemoryStore implements PlatformStore {
     { requestHash: string; response: TaskRecord }
   >();
   private taskSteps: TaskStepRecord[] = [];
+  private taskPlans = new Map<string, EngineeringPlan>();
   private projectProfiles = new Map<string, ProjectProfile>();
+  private projectMemory = new Map<string, Map<ProjectContextCategory, unknown>>();
+
+  async listOrganizations() {
+    return this.organizations.toSorted((a, b) => a.name.localeCompare(b.name));
+  }
+  async createOrganization(input: Pick<OrganizationRecord, "name">) {
+    const record = { id: randomUUID(), name: input.name, createdAt: new Date() };
+    this.organizations.push(record);
+    return record;
+  }
+  async findOrganization(id: string) {
+    return this.organizations.find((item) => item.id === id) ?? null;
+  }
 
   async listAgents() {
     return this.agents.toSorted((a, b) => a.name.localeCompare(b.name));
@@ -75,10 +93,11 @@ export class MemoryStore implements PlatformStore {
   async listProjects() {
     return this.projects.toSorted((a, b) => a.name.localeCompare(b.name));
   }
-  async createProject(input: Pick<ProjectRecord, "name" | "repositoryUrl">) {
+  async createProject(input: { name: string; repositoryUrl: string | null; organizationId?: string | null }) {
     const record: ProjectRecord = {
       id: randomUUID(),
       ...input,
+      organizationId: input.organizationId ?? null,
       createdAt: new Date(),
     };
     this.projects.push(record);
@@ -87,8 +106,8 @@ export class MemoryStore implements PlatformStore {
   async findProject(id: string) {
     return this.projects.find((project) => project.id === id) ?? null;
   }
-  async findProjectByName(name: string) {
-    return this.projects.find((project) => project.name === name) ?? null;
+  async findProjectByName(name: string, organizationId: string | null = null) {
+    return this.projects.find((project) => project.name === name && project.organizationId === organizationId) ?? null;
   }
   async createWorkspace(
     input: Pick<WorkspaceRecord, "projectId" | "agentId" | "rootPath">,
@@ -103,6 +122,9 @@ export class MemoryStore implements PlatformStore {
   }
   async findWorkspace(id: string) {
     return this.workspaces.find((workspace) => workspace.id === id) ?? null;
+  }
+  async listWorkspaces(projectId?: string) {
+    return this.workspaces.filter((item) => !projectId || item.projectId === projectId);
   }
   async listTasks() {
     return this.tasks.toSorted(
@@ -239,8 +261,38 @@ export class MemoryStore implements PlatformStore {
   }
   async saveProjectProfile(projectId: string, profile: ProjectProfile) {
     this.projectProfiles.set(projectId, profile);
+    await this.saveProjectMemory(projectId, "architecture", profile.architecture);
+    await this.saveProjectMemory(projectId, "dependencies", profile.dependencies);
+    await this.saveProjectMemory(projectId, "database", profile.databases);
+    await this.saveProjectMemory(projectId, "routes", profile.routes);
+  }
+  async saveProjectMemory(projectId: string, category: ProjectContextCategory, content: unknown) {
+    const categories = this.projectMemory.get(projectId) ?? new Map<ProjectContextCategory, unknown>();
+    categories.set(category, redactEvent(content));
+    this.projectMemory.set(projectId, categories);
+  }
+  async loadProjectContext(projectId: string): Promise<ProjectContext> {
+    const memory = this.projectMemory.get(projectId);
+    return {
+      projectId,
+      architecture: memory?.get("architecture") ?? null,
+      dependencies: memory?.get("dependencies") ?? null,
+      environment: memory?.get("environment") ?? null,
+      database: memory?.get("database") ?? null,
+      routes: memory?.get("routes") ?? null,
+      decisions: memory?.get("decisions") ?? null,
+      knownIssues: memory?.get("known-issues") ?? null,
+      history: memory?.get("history") ?? null,
+      codeIndex: (memory?.get("code-index") as ProjectContext["codeIndex"] | undefined) ?? null,
+    };
+  }
+  async appendProjectHistory(projectId: string, entry: { taskId: string; outcome: string; summary: string; at?: string }) {
+    const context = await this.loadProjectContext(projectId);
+    const history = Array.isArray(context.history) ? context.history : [];
+    await this.saveProjectMemory(projectId, "history", [...history.slice(-499), { ...entry, at: entry.at ?? new Date().toISOString() }]);
   }
   async saveTaskPlan(taskId: string, plan: EngineeringPlan) {
+    this.taskPlans.set(taskId, structuredClone(plan));
     this.taskSteps = this.taskSteps.filter((step) => step.taskId !== taskId);
     this.taskSteps.push(
       ...plan.steps.map((step, position) => ({
@@ -256,17 +308,21 @@ export class MemoryStore implements PlatformStore {
       })),
     );
   }
+  async loadTaskPlan(taskId: string) {
+    return this.taskPlans.get(taskId) ?? null;
+  }
   async recordTaskEvidence(
     taskId: string,
     position: number,
     evidence: unknown,
+    verified = true,
   ) {
     const step = this.taskSteps.find(
       (item) => item.taskId === taskId && item.position === position,
     );
     if (!step) throw new Error("Task step not found");
     step.evidence = redactEvent(evidence);
-    step.state = "VERIFIED";
+    step.state = verified ? "VERIFIED" : "FAILED_VERIFICATION";
   }
   async listTaskSteps(taskId: string) {
     return this.taskSteps

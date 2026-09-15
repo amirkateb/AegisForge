@@ -26,6 +26,7 @@ const nav = [
 ];
 const empty: Snapshot = {
   agents: [],
+  organizations: [],
   projects: [],
   tasks: [],
   approvals: [],
@@ -222,6 +223,7 @@ function Page({
           {data.projects.map((project) => (
             <article key={project.id}>
               <strong>{project.name}</strong>
+              <span>{data.organizations.find((item) => item.id === project.organizationId)?.name ?? "Independent project"}</span>
               <span>
                 {
                   data.tasks.filter((task) => task.projectId === project.id)
@@ -326,7 +328,7 @@ function Page({
           </p>
           <p>
             <strong>Task assignment</strong>
-            <span>Explicit Project, Agent and Workspace IDs</span>
+            <span>Explicit or scored; equal candidates require a human choice</span>
           </p>
         </div>
       </Panel>

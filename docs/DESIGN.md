@@ -22,6 +22,18 @@ AI clients ─HTTPS─> API/MCP gateway ─> application services ─> PostgreSQ
 
 Any active state may move to `FAILED` or `CANCELLED`. `FIXING` has a configured attempt limit and always returns to `VERIFYING`. A timeout during an external effect creates `UNKNOWN`, requiring reconciliation rather than automatic replay.
 
+The controller records semantic phases separately from transport state: Observe loads durable context; Understand refreshes evidence; Plan validates structured steps; Execute invokes typed tools; Verify stores evidence; failed verification is diagnosed and repaired within the configured bound; Learn appends redacted history; Continue advances only after successful verification.
+
+## Project and code intelligence
+
+`project_memory` is authoritative for `architecture`, `dependencies`, `environment`, `database`, `routes`, `decisions`, `known-issues`, `history`, and `code-index`. Context can be exported into a `projects/<id>/context/*` layout, but two writable sources of truth are deliberately avoided.
+
+The index reads bounded source files, ignores dependencies/build artifacts and stores only metadata. Impact analysis walks reverse symbol/file relationships so consumers of a changed symbol are included.
+
+## Agent selection
+
+There is no default Agent. Automatic assignment considers only online Agents with a project workspace and sufficient permission. CPU, free memory and detected runtimes affect its deterministic score. Saturated candidates produce reasons; equal top scores produce `AGENT_SELECTION_REQUIRED` for human choice.
+
 ## Permission model
 
 | Level | Capability                                                                |
@@ -33,6 +45,8 @@ Any active state may move to `FAILED` or `CANCELLED`. `FIXING` has a configured 
 | 4     | Full configured host capability; critical actions still require approval  |
 
 Risk is `LOW`, `MEDIUM`, `HIGH` or `CRITICAL`. Level 3/4 does not bypass approval for policy-marked operations.
+
+The context firewall also evaluates environment, tool, structured arguments and affected paths. It rejects recursive protected-path deletion and upgrades production mutations to approval-required before dispatch.
 
 ## Scaling
 

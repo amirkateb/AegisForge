@@ -5,6 +5,8 @@ describe("engineering execution loop", () => {
   it("executes, verifies, fixes and continues through multiple steps", async () => {
     const statuses: string[] = [];
     const evidence: unknown[] = [];
+    const phases: string[] = [];
+    const learning: unknown[] = [];
     let calls = 0;
     const controller = new EngineeringController(
       {
@@ -16,6 +18,16 @@ describe("engineering execution loop", () => {
         async recordEvidence(_id, _step, value) {
           evidence.push(value);
         },
+        async loadContext() {
+          phases.push("OBSERVE");
+          return { decisions: ["keep changes bounded"] };
+        },
+        async recordPhase(_id, phase) {
+          phases.push(phase);
+        },
+        async recordLearning(_projectId, _taskId, value) {
+          learning.push(value);
+        },
       },
       {
         async execute() {
@@ -24,6 +36,12 @@ describe("engineering execution loop", () => {
         },
         async verify() {
           return { ok: calls !== 1, evidence: { calls } };
+        },
+        async diagnose(_taskId, _step, verification) {
+          return { cause: "first attempt failed", evidence: verification.evidence };
+        },
+        async repair() {
+          return { applied: true };
         },
       },
     );
@@ -66,5 +84,8 @@ describe("engineering execution loop", () => {
     expect(statuses.at(-1)).toBe("COMPLETED");
     expect(calls).toBe(3);
     expect(evidence).toHaveLength(3);
+    expect(phases).toEqual(expect.arrayContaining(["OBSERVE", "UNDERSTAND", "PLAN", "EXECUTE", "VERIFY", "LEARN", "CONTINUE"]));
+    expect(learning).toHaveLength(1);
+    expect(evidence).toEqual(expect.arrayContaining([expect.objectContaining({ diagnosis: expect.objectContaining({ cause: "first attempt failed" }) })]));
   });
 });

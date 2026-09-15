@@ -1,6 +1,7 @@
 import { buildServer } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createPgStore } from "./persistence/pg-store.js";
+import { OpenAIPlanningModel } from "../../controller/src/planner.js";
 
 const config = loadConfig();
 const store = createPgStore(config.DATABASE_URL);
@@ -15,6 +16,9 @@ const app = await buildServer({
   allowedOrigins: config.ALLOWED_ORIGINS.split(",")
     .map((value) => value.trim())
     .filter(Boolean),
+  ...(config.OPENAI_API_KEY
+    ? { planningModel: new OpenAIPlanningModel(config.OPENAI_API_KEY, config.OPENAI_MODEL) }
+    : {}),
 });
 
 const shutdown = async (signal: string) => {

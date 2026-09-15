@@ -3,6 +3,8 @@ import type {
   EnvironmentName,
   PermissionLevel,
   ProjectProfile,
+  ProjectContext,
+  ProjectContextCategory,
   Risk,
   TaskStatus,
 } from "../../packages/contracts/src/index.js";
@@ -20,8 +22,14 @@ export interface AgentRecord {
 }
 export interface ProjectRecord {
   id: string;
+  organizationId: string | null;
   name: string;
   repositoryUrl: string | null;
+  createdAt: Date;
+}
+export interface OrganizationRecord {
+  id: string;
+  name: string;
   createdAt: Date;
 }
 export interface WorkspaceRecord {
@@ -82,6 +90,9 @@ export interface TaskStepRecord {
 }
 
 export interface PlatformStore {
+  listOrganizations(): Promise<OrganizationRecord[]>;
+  createOrganization(input: Pick<OrganizationRecord, "name">): Promise<OrganizationRecord>;
+  findOrganization(id: string): Promise<OrganizationRecord | null>;
   listAgents(): Promise<AgentRecord[]>;
   createAgent(
     input: Pick<
@@ -104,15 +115,18 @@ export interface PlatformStore {
   ): Promise<AgentRecord | null>;
   findAgent(id: string): Promise<AgentRecord | null>;
   listProjects(): Promise<ProjectRecord[]>;
-  createProject(
-    input: Pick<ProjectRecord, "name" | "repositoryUrl">,
-  ): Promise<ProjectRecord>;
+  createProject(input: {
+    name: string;
+    repositoryUrl: string | null;
+    organizationId?: string | null;
+  }): Promise<ProjectRecord>;
   findProject(id: string): Promise<ProjectRecord | null>;
-  findProjectByName(name: string): Promise<ProjectRecord | null>;
+  findProjectByName(name: string, organizationId?: string | null): Promise<ProjectRecord | null>;
   createWorkspace(
     input: Pick<WorkspaceRecord, "projectId" | "agentId" | "rootPath">,
   ): Promise<WorkspaceRecord>;
   findWorkspace(id: string): Promise<WorkspaceRecord | null>;
+  listWorkspaces(projectId?: string): Promise<WorkspaceRecord[]>;
   listTasks(): Promise<TaskRecord[]>;
   findTask(id: string): Promise<TaskRecord | null>;
   updateTaskStatus(id: string, status: TaskStatus): Promise<TaskRecord | null>;
@@ -163,11 +177,24 @@ export interface PlatformStore {
     profile: ProjectProfile,
     sourceTaskId?: string,
   ): Promise<void>;
+  saveProjectMemory(
+    projectId: string,
+    category: ProjectContextCategory,
+    content: unknown,
+    sourceTaskId?: string,
+  ): Promise<void>;
+  loadProjectContext(projectId: string): Promise<ProjectContext>;
+  appendProjectHistory(
+    projectId: string,
+    entry: { taskId: string; outcome: string; summary: string; at?: string },
+  ): Promise<void>;
   saveTaskPlan(taskId: string, plan: EngineeringPlan): Promise<void>;
+  loadTaskPlan(taskId: string): Promise<EngineeringPlan | null>;
   recordTaskEvidence(
     taskId: string,
     position: number,
     evidence: unknown,
+    verified?: boolean,
   ): Promise<void>;
   listTaskSteps(taskId: string): Promise<TaskStepRecord[]>;
 }

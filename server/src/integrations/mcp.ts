@@ -5,9 +5,12 @@ import {
   type CallToolResult,
   type Tool,
 } from "@modelcontextprotocol/server";
+import { z } from "zod";
 import { toNodeHandler } from "@modelcontextprotocol/node";
-import { CreateTaskSchema } from "../../../packages/contracts/src/index.js";
+import { IdSchema, PermissionLevelSchema } from "../../../packages/contracts/src/index.js";
+import { selectAgent } from "../../../controller/src/agent-selector.js";
 import type { PlatformStore } from "../domain.js";
+import type { TaskRunner } from "../task-runner.js";
 
 const tools: Tool[] = [
   {
@@ -40,14 +43,12 @@ const tools: Tool[] = [
   {
     name: "aegis_create_task",
     description:
-      "Create an explicitly assigned engineering task. Mutations require a caller-stable idempotencyKey.",
+      "Create an automatically or explicitly assigned engineering task. Mutations require a caller-stable idempotencyKey.",
     inputSchema: {
       type: "object",
       required: [
         "idempotencyKey",
         "projectId",
-        "agentId",
-        "workspaceId",
         "goal",
       ],
       additionalProperties: false,
@@ -58,6 +59,8 @@ const tools: Tool[] = [
         workspaceId: { type: "string", format: "uuid" },
         goal: { type: "string", minLength: 3, maxLength: 20000 },
         maxFixAttempts: { type: "integer", minimum: 0, maximum: 5 },
+        requiredPermissionLevel: { type: "integer", minimum: 0, maximum: 4 },
+        technologies: { type: "array", maxItems: 30, items: { type: "string" } },
       },
     },
   },
@@ -74,7 +77,7 @@ const text = (value: unknown, isError = false): CallToolResult => ({
 const hash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
-function serverFor(store: PlatformStore) {
+function serverFor(store: PlatformStore, runner?: TaskRunner | null) {
   const server = new Server(
     { name: "aegisforge", version: "0.1.0" },
     { capabilities: { tools: {} } },
@@ -94,7 +97,28 @@ function serverFor(store: PlatformStore) {
           const key =
             typeof args.idempotencyKey === "string" ? args.idempotencyKey : "";
           if (key.length < 8) throw new Error("idempotencyKey is required");
-          const input = CreateTaskSchema.parse(args);
+          const requested = z.object({
+            projectId: IdSchema,
+            agentId: IdSchema.optional(),
+            workspaceId: IdSchema.optional(),
+            goal: z.string().trim().min(3).max(20_000),
+            maxFixAttempts: z.number().int().min(0).max(5).default(2),
+            requiredPermissionLevel: PermissionLevelSchema.default(2),
+            technologies: z.array(z.string().min(1).max(100)).max(30).default([]),
+          }).refine((value) => Boolean(value.agentId) === Boolean(value.workspaceId), { message: "agentId and workspaceId must be provided together" }).parse(args);
+          let assignment: { agentId: string; workspaceId: string };
+          if (requested.agentId && requested.workspaceId) assignment = { agentId: requested.agentId, workspaceId: requested.workspaceId };
+          else {
+            const selected = selectAgent({ projectId: requested.projectId, requiredPermissionLevel: requested.requiredPermissionLevel, technologies: requested.technologies, agents: await store.listAgents(), workspaces: await store.listWorkspaces(requested.projectId) });
+            if (selected.type !== "SELECTED") throw new Error(`Agent selection required: ${JSON.stringify(selected)}`);
+            assignment = selected;
+          }
+          const input = {
+            projectId: requested.projectId,
+            ...assignment,
+            goal: requested.goal,
+            maxFixAttempts: requested.maxFixAttempts,
+          };
           const [agent, project, workspace] = await Promise.all([
             store.findAgent(input.agentId),
             store.findProject(input.projectId),
@@ -110,11 +134,12 @@ function serverFor(store: PlatformStore) {
             throw new Error("Invalid explicit task assignment");
           const result = await store.createTaskIdempotently(
             key,
-            hash(input),
+            hash(requested),
             input,
           );
           if (result.type === "MISMATCH")
             throw new Error("Idempotency key reused with a different request");
+          if (result.type === "CREATED" && runner) void runner.run(result.task.id).catch(() => undefined);
           return text(result.task);
         }
         default:
@@ -126,8 +151,8 @@ function serverFor(store: PlatformStore) {
   });
   return server;
 }
-export function createMcpNodeHandler(store: PlatformStore) {
+export function createMcpNodeHandler(store: PlatformStore, runner?: TaskRunner | null) {
   return toNodeHandler(
-    createMcpHandler(() => serverFor(store), { legacy: "stateless" }),
+    createMcpHandler(() => serverFor(store, runner), { legacy: "stateless" }),
   );
 }

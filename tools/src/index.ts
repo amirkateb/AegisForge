@@ -20,6 +20,7 @@ export interface ToolPlugin {
 export * from "./builtins.js";
 export * from "./operations.js";
 export * from "./sessions.js";
+export * from "./workflows.js";
 
 export class ToolRegistry {
   private readonly plugins = new Map<string, ToolPlugin>();

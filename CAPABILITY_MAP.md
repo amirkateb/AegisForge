@@ -13,4 +13,6 @@
 | cli-installer          | Operator CLI, transactional installation, service/proxy/TLS setup and uninstall | contracts, control-server               |
 | integrations           | MCP and Custom GPT/OpenAPI adapters                                             | contracts, control-server               |
 
+Phase 2 adds category-based project memory, bounded code indexing/impact analysis, scored non-default Agent selection, context policy, autonomous approval-resumable task running, organization grouping, health telemetry, and executable deployment/TLS workflows.
+
 Build order: contracts → identity-policy/persistence → tool-runtime → agent-runtime/control-server → engineering-controller → integrations/dashboard → cli-installer.

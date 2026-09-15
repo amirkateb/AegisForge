@@ -1,5 +1,9 @@
 # Installation and operations
 
+Automatic assignment needs at least one online Agent with a registered workspace for the project. Technology matching comes from inventory, so install relevant runtimes and database CLIs on that host. TLS workflows additionally require Certbot plus the selected Nginx/Apache/Traefik executable and publicly reachable ports 80/443. Production effects remain paused until approval.
+
+Set `OPENAI_API_KEY` and optionally `OPENAI_MODEL` in the protected Master environment to enable automatic Understand/Plan execution. Without a provider key the deterministic API, policy and tools remain usable, while `/v1/tasks/{id}/run` returns `PLANNER_UNAVAILABLE` instead of pretending a plan was produced.
+
 ## Master
 
 Prepare PostgreSQL and a DNS A/AAAA record, then run the installer as root. It validates Node 22, creates an unprivileged service account, copies a locked build, generates four distinct credentials, runs migrations with the production environment, installs systemd, checks DNS, installs Nginx/Certbot on apt-based systems, provisions HTTPS and verifies `/healthz`.

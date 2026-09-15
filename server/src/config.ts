@@ -12,6 +12,8 @@ const ConfigSchema = z.object({
   AGENT_ENROLLMENT_KEY: z.string().min(32),
   DASHBOARD_SESSION_SECRET: z.string().min(32),
   ALLOWED_ORIGINS: z.string().default(""),
+  OPENAI_API_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().min(20).optional()),
+  OPENAI_MODEL: z.string().min(1).default("gpt-5.6"),
 });
 
 export type ServerConfig = z.infer<typeof ConfigSchema>;
