@@ -7,7 +7,7 @@ import type {
   ProjectContextCategory,
   Risk,
   TaskStatus,
-} from "../../packages/contracts/src/index.js";
+} from "@aegisforge/contracts";
 
 export interface AgentRecord {
   id: string;

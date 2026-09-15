@@ -1,7 +1,7 @@
 import {
   EngineeringPlanSchema,
   type EngineeringPlan,
-} from "../../packages/contracts/src/index.js";
+} from "@aegisforge/contracts";
 
 export function createDeploymentPlan(input: {
   environment: "PRODUCTION" | "DEVELOPMENT" | "TESTING";

@@ -2,9 +2,9 @@ import type {
   EngineeringPlan,
   ProjectProfile,
   TaskStatus,
-} from "../../packages/contracts/src/index.js";
-import type { WorkflowPort } from "../../controller/src/execution-loop.js";
-import type { EngineeringPhase } from "../../controller/src/execution-loop.js";
+} from "@aegisforge/contracts";
+import type { WorkflowPort } from "@aegisforge/controller";
+import type { EngineeringPhase } from "@aegisforge/controller";
 import type { PlatformStore } from "./domain.js";
 
 export class PersistentWorkflow implements WorkflowPort {

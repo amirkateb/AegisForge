@@ -1,4 +1,4 @@
-import type { TaskStatus } from "../../packages/contracts/src/index.js";
+import type { TaskStatus } from "@aegisforge/contracts";
 
 const transitions: Readonly<Record<TaskStatus, ReadonlySet<TaskStatus>>> = {
   QUEUED: new Set(["UNDERSTANDING", "CANCELLED"]),

@@ -1,7 +1,7 @@
 import {
   ProjectProfileSchema,
   type ProjectProfile,
-} from "../../packages/contracts/src/index.js";
+} from "@aegisforge/contracts";
 
 export interface ProjectReader {
   list(depth: number): Promise<string[]>;

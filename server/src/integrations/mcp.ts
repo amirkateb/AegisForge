@@ -7,8 +7,8 @@ import {
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { toNodeHandler } from "@modelcontextprotocol/node";
-import { IdSchema, PermissionLevelSchema } from "../../../packages/contracts/src/index.js";
-import { selectAgent } from "../../../controller/src/agent-selector.js";
+import { IdSchema, PermissionLevelSchema } from "@aegisforge/contracts";
+import { selectAgent } from "@aegisforge/controller";
 import type { PlatformStore } from "../domain.js";
 import type { TaskRunner } from "../task-runner.js";
 

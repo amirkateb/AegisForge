@@ -2,7 +2,7 @@ import os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
-import type { AgentInventory } from "../../packages/contracts/src/index.js";
+import type { AgentInventory } from "@aegisforge/contracts";
 
 const run = promisify(execFile);
 async function version(

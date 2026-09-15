@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluatePolicy } from "../../packages/policy/src/index.js";
+import { evaluatePolicy } from "@aegisforge/policy";
 
 describe("evaluatePolicy", () => {
   it("denies a tool above the principal permission level", () => {

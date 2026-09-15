@@ -1,7 +1,7 @@
 import {
   ToolDefinitionSchema,
   type ToolDefinition,
-} from "../../packages/contracts/src/index.js";
+} from "@aegisforge/contracts";
 
 export interface ToolContext {
   workspaceRoot: string;

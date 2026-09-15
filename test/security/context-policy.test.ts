@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateContextPolicy } from "../../packages/policy/src/index.js";
+import { evaluateContextPolicy } from "@aegisforge/policy";
 import { gitDiffTool, wordpressPluginTool } from "../../tools/src/operations.js";
 
 describe("context policy", () => {

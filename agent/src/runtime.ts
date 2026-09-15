@@ -4,14 +4,14 @@ import { z } from "zod";
 import {
   DispatchSchema,
   type Dispatch,
-} from "../../packages/contracts/src/index.js";
-import { evaluatePolicy } from "../../packages/policy/src/index.js";
+} from "@aegisforge/contracts";
+import { evaluatePolicy } from "@aegisforge/policy";
 import {
   builtInTools,
   operationalTools,
   sessionTools,
   ToolRegistry,
-} from "../../tools/src/index.js";
+} from "@aegisforge/tools";
 import { collectInventory } from "./inventory.js";
 import { WorkspaceGuard } from "./security/workspace-guard.js";
 

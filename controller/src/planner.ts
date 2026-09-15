@@ -3,7 +3,7 @@ import {
   type EngineeringPlan,
   type ProjectProfile,
   type ToolDefinition,
-} from "../../packages/contracts/src/index.js";
+} from "@aegisforge/contracts";
 
 export interface PlanningModel {
   createPlan(input: {

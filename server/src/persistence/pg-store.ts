@@ -5,7 +5,7 @@ import type {
   ProjectContext,
   ProjectContextCategory,
   ProjectProfile,
-} from "../../../packages/contracts/src/index.js";
+} from "@aegisforge/contracts";
 import type {
   AgentRecord,
   ApprovalRecord,

@@ -3,7 +3,7 @@ import type {
   ProjectProfile,
   TaskStatus,
   ToolDefinition,
-} from "../../packages/contracts/src/index.js";
+} from "@aegisforge/contracts";
 import { transitionTask } from "./task-state.js";
 
 export interface WorkflowPort {

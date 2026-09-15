@@ -6,7 +6,7 @@ import {
   type Dispatch,
   type AgentInventory,
   type ToolDefinition,
-} from "../../../packages/contracts/src/index.js";
+} from "@aegisforge/contracts";
 import type { PlatformStore } from "../domain.js";
 
 interface ConnectedAgent {

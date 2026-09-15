@@ -15,8 +15,8 @@ import {
   PermissionLevelSchema,
   ProjectContextCategorySchema,
   ToolIntentSchema,
-} from "../../packages/contracts/src/index.js";
-import { evaluateContextPolicy } from "../../packages/policy/src/index.js";
+} from "@aegisforge/contracts";
+import { evaluateContextPolicy } from "@aegisforge/policy";
 import type { PlatformStore } from "./domain.js";
 import {
   requireRole,
@@ -33,11 +33,11 @@ import {
 import { redactEvent } from "./observability/redaction.js";
 import { AgentHub } from "./agents/agent-hub.js";
 import { createMcpNodeHandler } from "./integrations/mcp.js";
-import { selectAgent } from "../../controller/src/agent-selector.js";
-import { findAffectedCode } from "../../controller/src/code-intelligence.js";
-import type { PlanningModel } from "../../controller/src/planner.js";
+import { selectAgent } from "@aegisforge/controller";
+import { findAffectedCode } from "@aegisforge/controller";
+import type { PlanningModel } from "@aegisforge/controller";
 import { TaskRunner } from "./task-runner.js";
-import { createDeploymentPlan, createTlsPlan } from "../../tools/src/workflows.js";
+import { createDeploymentPlan, createTlsPlan } from "@aegisforge/tools";
 
 export interface ServerSecrets {
   masterApiKey: string;

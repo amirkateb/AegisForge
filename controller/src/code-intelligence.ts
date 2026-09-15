@@ -1,7 +1,7 @@
 import {
   CodeIndexSchema,
   type CodeIndex,
-} from "../../packages/contracts/src/index.js";
+} from "@aegisforge/contracts";
 import type { ProjectReader } from "./project-analyzer.js";
 
 const SOURCE = /\.(?:[cm]?[jt]sx?|php|py|go|rs)$/i;

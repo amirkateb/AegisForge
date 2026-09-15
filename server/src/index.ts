@@ -1,7 +1,7 @@
 import { buildServer } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createPgStore } from "./persistence/pg-store.js";
-import { OpenAIPlanningModel } from "../../controller/src/planner.js";
+import { OpenAIPlanningModel } from "@aegisforge/controller";
 
 const config = loadConfig();
 const store = createPgStore(config.DATABASE_URL);
