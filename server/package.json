@@ -12,6 +12,7 @@
   "dependencies": {
     "@aegisforge/contracts": "0.1.0",
     "@aegisforge/policy": "0.1.0",
-    "@aegisforge/tools": "0.1.0"
+    "@aegisforge/tools": "0.1.0",
+    "@aegisforge/controller": "0.1.0"
   }
 }
