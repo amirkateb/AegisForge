@@ -3,7 +3,6 @@ import { z } from "zod";
 import { EngineeringController, WorkflowPausedError } from "@aegisforge/controller";
 import { analyzeCode } from "@aegisforge/controller";
 import { analyzeProject, type ProjectReader } from "@aegisforge/controller";
-import { planTask, type PlanningModel } from "@aegisforge/controller";
 import { diagnoseFailure } from "@aegisforge/controller";
 import { evaluateContextPolicy } from "@aegisforge/policy";
 import type { EngineeringPlan, ToolDefinition } from "@aegisforge/contracts";
@@ -13,7 +12,10 @@ import type { PlatformStore, TaskRecord } from "./domain.js";
 
 export class TaskRunner {
   private readonly active = new Map<string, Promise<{ status: string; detail?: unknown }>>();
-  constructor(private readonly store: PlatformStore, private readonly hub: AgentHub, private readonly planner: PlanningModel) {}
+  constructor(
+    private readonly store: PlatformStore,
+    private readonly hub: AgentHub
+  ) {}
 
   run(taskId: string) {
     const existing = this.active.get(taskId);
@@ -42,8 +44,13 @@ export class TaskRunner {
     await this.store.saveProjectMemory(task.projectId, "code-index", codeIndex, task.id);
     await this.store.saveProjectMemory(task.projectId, "environment", { agentId: agent.id, environment: agent.environment, inventory: agent.inventory }, task.id);
     const tools = this.hub.connectedTools().find((item) => item.agentId === agent.id)?.tools ?? [];
-    const existingPlan = await this.store.loadTaskPlan(task.id);
-    const plan = existingPlan ?? await planTask(this.planner, { goal: task.goal, profile, tools });
+    const plan = await this.store.loadTaskPlan(task.id);
+
+if (!plan) {
+  throw new Error(
+    "Task has no EngineeringPlan. Submit plan from CustomGPT before execution."
+  );
+}
     for (const step of plan.steps)
       if (step.toolName && !tools.some((tool) => tool.name === step.toolName))
         throw new Error(`Plan references unavailable tool: ${step.toolName}`);
@@ -98,7 +105,12 @@ class RemoteProjectReader implements ProjectReader {
 }
 
 class RemoteExecutionPort {
-  constructor(private readonly store: PlatformStore, private readonly hub: AgentHub, private readonly task: TaskRecord, private readonly tools: ToolDefinition[]) {}
+  constructor(
+    private readonly store: PlatformStore,
+    private readonly hub: AgentHub,
+    private readonly task: TaskRecord,
+    private readonly tools: ToolDefinition[],
+  ) {}
   async execute(taskId: string, step: EngineeringPlan["steps"][number]) {
     if (!step.toolName) return { skipped: true, reason: "Reasoning-only plan step" };
     const tool = this.tools.find((item) => item.name === step.toolName);

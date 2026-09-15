@@ -35,7 +35,6 @@ import { AgentHub } from "./agents/agent-hub.js";
 import { createMcpNodeHandler } from "./integrations/mcp.js";
 import { selectAgent } from "@aegisforge/controller";
 import { findAffectedCode } from "@aegisforge/controller";
-import type { PlanningModel } from "@aegisforge/controller";
 import { TaskRunner } from "./task-runner.js";
 import { createDeploymentPlan, createTlsPlan } from "@aegisforge/tools";
 
@@ -50,7 +49,6 @@ export interface BuildServerOptions {
   secrets: ServerSecrets;
   logger?: boolean;
   allowedOrigins?: string[];
-  planningModel?: PlanningModel;
 }
 
 const AgentInput = z.object({
@@ -206,9 +204,11 @@ export async function buildServer(
     return { ok: true };
   });
   const agentHub = new AgentHub(options.store);
-  const taskRunner = options.planningModel ? new TaskRunner(options.store, agentHub, options.planningModel) : null;
+  const taskRunner = new TaskRunner(
+  options.store,
+  agentHub,
+);
   const continueTask = (taskId: string) => {
-    if (!taskRunner) return;
     void taskRunner.run(taskId).catch(async (error) => {
       await options.store.updateTaskStatus(taskId, "FAILED");
       const task = await options.store.findTask(taskId);
@@ -573,8 +573,6 @@ export async function buildServer(
     },
   );
   app.post("/v1/tasks/:id/run", { preHandler: requireRole(options.secrets, ["MASTER", "MCP"]) }, async (request, reply) => {
-    if (!taskRunner)
-      return reply.code(409).send({ error: { code: "PLANNER_UNAVAILABLE", message: "Configure OPENAI_API_KEY to run autonomous tasks", requestId: request.id } });
     const id = IdSchema.parse((request.params as { id: unknown }).id);
     const result = await taskRunner.run(id);
     return reply.code(result.status === "WAITING_APPROVAL" ? 202 : 200).send(result);
