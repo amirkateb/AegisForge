@@ -286,6 +286,142 @@ describe("Master REST API", () => {
     );
   });
 
+  it("accepts JSON-string arguments from Custom GPT Actions", async () => {
+  const agent = await store.createAgent({
+    name: "gpt-json-worker",
+    environment: "TESTING",
+    permissionLevel: 2,
+    tokenDigest: "digest",
+  });
+
+  const project = await store.createProject({
+    name: "gpt-json-project",
+    repositoryUrl: null,
+  });
+
+  const workspace = await store.createWorkspace({
+    projectId: project.id,
+    agentId: agent.id,
+    rootPath: "/srv/gpt-json",
+  });
+
+  const task = await store.createTask({
+    projectId: project.id,
+    agentId: agent.id,
+    workspaceId: workspace.id,
+    goal: "Test Custom GPT JSON argument transport",
+    maxFixAttempts: 2,
+  });
+
+  const planResponse = await app.inject({
+    method: "POST",
+    url: `/v1/tasks/${task.id}/plan`,
+    headers: {
+      authorization: "Bearer mcp-test-key",
+    },
+    payload: {
+      plan: {
+        summary: "Inspect the workspace",
+        assumptions: [],
+        steps: [
+          {
+            title: "List workspace",
+            description: "Inspect the workspace root",
+            toolName: "filesystem.list",
+            argumentsJson: JSON.stringify({
+              path: ".",
+              depth: 6,
+              maxFiles: 5000,
+            }),
+            verification: "Workspace file list is returned",
+          },
+        ],
+      },
+      start: false,
+    },
+  });
+
+  expect(planResponse.statusCode).toBe(202);
+
+  const storedPlan = await store.loadTaskPlan(task.id);
+
+  expect(storedPlan?.steps[0]?.arguments).toEqual({
+    path: ".",
+    depth: 6,
+    maxFiles: 5000,
+  });
+
+  const validToolRequest = await app.inject({
+    method: "POST",
+    url: `/v1/tasks/${task.id}/tools/run`,
+    headers: {
+      authorization: "Bearer mcp-test-key",
+    },
+    payload: {
+      toolName: "filesystem.list",
+      argumentsJson: JSON.stringify({
+        path: ".",
+        depth: 6,
+        maxFiles: 5000,
+      }),
+      reason: "Inspect the workspace structure",
+      expectedImpact: "Read-only workspace inspection",
+      affectedResources: ["."],
+    },
+  });
+
+  // There is no connected Agent in this integration test.
+  // Reaching TOOL_UNAVAILABLE proves argumentsJson passed validation
+  // and was decoded before tool dispatch.
+  expect(validToolRequest.statusCode).toBe(409);
+  expect(validToolRequest.json().error.code).toBe(
+    "TOOL_UNAVAILABLE",
+  );
+
+  const invalidToolRequest = await app.inject({
+    method: "POST",
+    url: `/v1/tasks/${task.id}/tools/run`,
+    headers: {
+      authorization: "Bearer mcp-test-key",
+    },
+    payload: {
+      toolName: "filesystem.list",
+      argumentsJson: "{invalid-json",
+      reason: "Inspect the workspace structure",
+      expectedImpact: "Read-only workspace inspection",
+      affectedResources: ["."],
+    },
+  });
+
+  expect(invalidToolRequest.statusCode).toBe(422);
+  expect(invalidToolRequest.json().error.code).toBe(
+    "VALIDATION_ERROR",
+  );
+
+  const resultResponse = await app.inject({
+    method: "POST",
+    url: `/v1/tasks/${task.id}/result`,
+    headers: {
+      authorization: "Bearer mcp-test-key",
+    },
+    payload: {
+      status: "COMPLETED",
+      summary: "Custom GPT transport test completed",
+      verificationJson: JSON.stringify({
+        parser: "passed",
+        argumentsDecoded: true,
+      }),
+    },
+  });
+
+  expect(resultResponse.statusCode).toBe(200);
+
+  expect(resultResponse.json().report.verification).toEqual({
+    parser: "passed",
+    argumentsDecoded: true,
+  });
+  });
+
   it("creates an explicitly assigned task idempotently", async () => {
     const agent = await store.createAgent({
       name: "forge-01",

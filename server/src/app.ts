@@ -15,6 +15,7 @@ import {
   EnvironmentSchema,
   IdSchema,
   PermissionLevelSchema,
+  PlanStepSchema,
   ProjectContextCategorySchema,
   ToolIntentSchema,
 } from "@aegisforge/contracts";
@@ -75,6 +76,29 @@ const WorkspaceInput = z.object({
 const DecisionInput = z.object({
   decision: z.enum(["APPROVE_ONCE", "APPROVE_SESSION", "DENY"]),
 });
+
+const ToolArgumentsSchema = z.record(z.string(), z.unknown());
+
+const JsonValueStringSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(1_500_000)
+  .transform((value, ctx): unknown => {
+    try {
+      return JSON.parse(value) as unknown;
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Value must contain valid JSON",
+      });
+      return z.NEVER;
+    }
+  });
+
+const ArgumentsJsonSchema =
+  JsonValueStringSchema.pipe(ToolArgumentsSchema);
+
 const ToolRunInput = z.object({
   taskId: IdSchema,
   projectId: IdSchema,
@@ -82,27 +106,154 @@ const ToolRunInput = z.object({
   workspaceId: IdSchema,
   stepId: IdSchema,
   toolName: z.string().min(2).max(100),
-  arguments: z.record(z.string(), z.unknown()),
+  arguments: ToolArgumentsSchema,
   reason: z.string().min(3).max(4000),
   expectedImpact: z.string().min(3).max(4000),
   affectedResources: z.array(z.string().max(1000)).max(100),
   approvalId: IdSchema.optional(),
 });
+
 const TaskToolRunInput = ToolRunInput.omit({
   taskId: true,
   projectId: true,
   agentId: true,
   workspaceId: true,
-}).extend({ stepId: IdSchema.optional() });
+  arguments: true,
+})
+  .extend({
+    stepId: IdSchema.optional(),
+
+    // Legacy REST clients may still send the original object form.
+    arguments: ToolArgumentsSchema.optional(),
+
+    // Custom GPT Actions should use this field.
+    argumentsJson: ArgumentsJsonSchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.arguments === undefined &&
+      value.argumentsJson === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["argumentsJson"],
+        message: "argumentsJson is required",
+      });
+    }
+
+    if (
+      value.arguments !== undefined &&
+      value.argumentsJson !== undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["argumentsJson"],
+        message: "Send only one of arguments or argumentsJson",
+      });
+    }
+  })
+  .transform(
+    ({
+      arguments: legacyArguments,
+      argumentsJson,
+      ...rest
+    }) => ({
+      ...rest,
+      arguments: legacyArguments ?? argumentsJson!,
+    }),
+  );
+
+const ActionPlanStepInput = PlanStepSchema.omit({
+  arguments: true,
+})
+  .extend({
+    // Backward compatibility for direct REST/API clients.
+    arguments: ToolArgumentsSchema.optional(),
+
+    // Custom GPT Actions should use this field.
+    argumentsJson: ArgumentsJsonSchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.arguments === undefined &&
+      value.argumentsJson === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["argumentsJson"],
+        message: "argumentsJson is required",
+      });
+    }
+
+    if (
+      value.arguments !== undefined &&
+      value.argumentsJson !== undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["argumentsJson"],
+        message: "Send only one of arguments or argumentsJson",
+      });
+    }
+  })
+  .transform(
+    ({
+      arguments: legacyArguments,
+      argumentsJson,
+      ...rest
+    }) => ({
+      ...rest,
+      arguments: legacyArguments ?? argumentsJson!,
+    }),
+  );
+
+const ActionEngineeringPlanInput = EngineeringPlanSchema.omit({
+  steps: true,
+}).extend({
+  steps: z.array(ActionPlanStepInput).min(1).max(50),
+});
+
 const TaskPlanInput = z.object({
-  plan: EngineeringPlanSchema,
+  plan: ActionEngineeringPlanInput,
   start: z.boolean().default(true),
 });
-const TaskResultInput = z.object({
-  status: z.enum(["COMPLETED", "FAILED"]),
-  summary: z.string().trim().min(3).max(10_000),
-  verification: z.unknown().optional(),
-});
+
+const TaskResultInput = z
+  .object({
+    status: z.enum(["COMPLETED", "FAILED"]),
+    summary: z.string().trim().min(3).max(10_000),
+
+    // Backward compatibility for existing REST clients.
+    verification: z.unknown().optional(),
+
+    // Custom GPT Actions should use this field.
+    verificationJson: JsonValueStringSchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.verification !== undefined &&
+      value.verificationJson !== undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["verificationJson"],
+        message: "Send only one of verification or verificationJson",
+      });
+    }
+  })
+  .transform(
+    ({
+      verification,
+      verificationJson,
+      ...rest
+    }) => ({
+      ...rest,
+      verification:
+        verification !== undefined
+          ? verification
+          : verificationJson,
+    }),
+  );
 const AgentWorkspaceInput = z.object({
   projectName: z.string().trim().min(2).max(120),
   organizationId: IdSchema.nullable().optional(),
