@@ -42,11 +42,19 @@ There is no default Agent. Automatic assignment considers only online Agents wit
 | 1     | Non-destructive safe operations                                           |
 | 2     | Development writes/build/tests inside workspace                           |
 | 3     | Sensitive deploy, service, database and security operations with approval |
-| 4     | Full configured host capability; critical actions still require approval  |
+| 4     | Full configured host capability; approval is selected by Agent access mode |
 
-Risk is `LOW`, `MEDIUM`, `HIGH` or `CRITICAL`. Level 3/4 does not bypass approval for policy-marked operations.
+Risk is `LOW`, `MEDIUM`, `HIGH` or `CRITICAL`. Permission controls eligibility;
+the durable Agent access mode controls interruption. `FULL_TRUST` allows every
+registered tool without approval. `CAUTIOUS` preserves sensitive and production
+approvals. `VERY_CAUTIOUS` automatically allows only level-0, low-risk,
+`NEVER` tools. Saving any mode synchronizes permission level 4.
 
-The context firewall also evaluates environment, tool, structured arguments and affected paths. It rejects recursive protected-path deletion and upgrades production mutations to approval-required before dispatch.
+In cautious modes, the context firewall also evaluates environment, tool,
+structured arguments and affected paths. It rejects recursive protected-path
+deletion and upgrades production mutations to approval-required before dispatch.
+Full trust intentionally bypasses those policy decisions, while authenticated
+dispatch, registered-tool, expiry, assignment and WorkspaceGuard checks remain.
 
 ## Scaling
 

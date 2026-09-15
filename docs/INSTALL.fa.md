@@ -4,6 +4,8 @@
 
 Node.js 22+، PostgreSQL 15+ و در نصب Production لینوکس دارای systemd لازم است. برای TLS عمومی باید دامنهٔ واقعی با رکورد A/AAAA داشته باشید.
 
+Master به API هیچ مدل هوش مصنوعی متصل نمی‌شود. پس از نصب، فقط `MCP_KEY` را به Action مربوط به Custom GPT خصوصی بدهید؛ Reasoning و Planning کاملاً توسط همان GPT انجام می‌شود.
+
 ## Master
 
 Installer کاربر غیرممتاز `aegisforge` را می‌سازد، dependencyهای lock‌شده را نصب و build می‌کند، secrets مستقل می‌سازد، migration و systemd را اجرا می‌کند. با `--domain`، DNS بررسی و Nginx/Certbot نصب می‌شوند و گواهی Let's Encrypt با email معتبر صادر می‌شود.
@@ -26,6 +28,10 @@ sudo npm run installer -- --type agent \
 ```
 
 هر Workspace در Master ثبت می‌شود و شناسهٔ واقعی آن در `WORKSPACE_ROOTS_JSON` ذخیره می‌گردد. Agent فقط اتصال خروجی `wss://` برقرار می‌کند.
+
+پس از اتصال، در صفحهٔ Agents یکی از Modeهای «کاملاً مورد اعتماد»، «محتاط» یا
+«خیلی محتاط» را انتخاب کنید. ذخیره Mode سطح دسترسی را خودکار روی ۴ می‌گذارد؛
+در حالت کاملاً مورد اعتماد همهٔ Toolهای ثبت‌شده بدون Approval اجرا می‌شوند.
 
 ## Both و حذف
 

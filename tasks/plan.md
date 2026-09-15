@@ -43,19 +43,50 @@ Upgrade the control plane into an evidence-driven engineering agent while preser
 
 ### Checkpoint: Release
 
-- [x] Full `npm run check` succeeds (17 files, 39 tests).
+- [x] Full `npm run check` succeeds (17 files, 42 tests).
 - [x] Security, connection, installer, SSL/deployment workflow and multi-Agent tests succeed.
 
 ## Risks and mitigations
 
-| Risk | Impact | Mitigation |
-| --- | --- | --- |
-| AI-generated unsafe plan | Critical | Strict schemas, known-tool constraint, computed risk and dual policy enforcement |
-| Incorrect automatic selection | High | Deterministic scored candidates; conflict response without a unique viable assignment |
-| Source indexing leaks secrets | High | No bodies persisted, ignored secret/vendor paths, bounded metadata only |
-| Production interruption | Critical | Production approval, staged workflow, health verification and explicit unknown state |
-| Migration compatibility | High | New migration only; no destructive schema edits |
+| Risk                          | Impact   | Mitigation                                                                            |
+| ----------------------------- | -------- | ------------------------------------------------------------------------------------- |
+| AI-generated unsafe plan      | Critical | Strict schemas, known-tool constraint, computed risk and dual policy enforcement      |
+| Incorrect automatic selection | High     | Deterministic scored candidates; conflict response without a unique viable assignment |
+| Source indexing leaks secrets | High     | No bodies persisted, ignored secret/vendor paths, bounded metadata only               |
+| Production interruption       | Critical | Production approval, staged workflow, health verification and explicit unknown state  |
+| Migration compatibility       | High     | New migration only; no destructive schema edits                                       |
 
 ## Open questions
 
 - Live certificate issuance, DNS delegation and service restart require a real delegated domain and Linux host. Repository tests validate command construction, policy and workflow behavior without claiming public issuance occurred.
+
+## Private GPT integration plan
+
+1. Extend the GPT-facing contract with a consolidated catalog, task details,
+   task-scoped tool execution, plan submission, and final result recording.
+2. Make task creation plan-aware and remove the create-before-plan execution race.
+3. Capture redacted failures at REST, controller, dispatch, MCP, and Agent
+   boundaries and surface an explicit error-only dashboard view.
+4. Replace the Custom GPT OpenAPI contract and configuration instructions with
+   the tested private-GPT workflow.
+5. Run focused API/connection/controller tests followed by `npm run check`.
+
+Status: complete. The private GPT contract, task lifecycle, error observability,
+dashboard view, documentation, and regression coverage are implemented.
+
+## Agent access-mode plan
+
+1. Add a shared `AgentAccessMode` contract and a forward-only database column;
+   default existing Agents to `CAUTIOUS`.
+2. Persist mode changes through an audited Agent API that atomically sets the
+   selected mode and permission level 4.
+3. Carry the mode in every dispatch and enforce the same policy matrix on the
+   Master and Agent; make `FULL_TRUST` independent of task approvals.
+4. Add an accessible dashboard editor with complete explanations for all three
+   modes and visible save/error state.
+5. Update OpenAPI, English/Persian operations and security documentation, then
+   run focused tests and `npm run check`.
+
+Status: complete. The Agent-wide modes, permission synchronization, dual policy
+enforcement, dashboard controls, migration, bilingual documentation, and 48-test
+regression suite are complete.

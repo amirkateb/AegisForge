@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
 import { z } from "zod";
-import {
-  DispatchSchema,
-  type Dispatch,
-} from "@aegisforge/contracts";
+import { DispatchSchema, type Dispatch } from "@aegisforge/contracts";
 import { evaluatePolicy } from "@aegisforge/policy";
 import {
   builtInTools,
@@ -126,6 +123,7 @@ export class AgentRuntime {
         "Tool definition does not match the local trusted registry",
       );
     const decision = evaluatePolicy({
+      accessMode: dispatch.accessMode,
       permissionLevel: dispatch.permissionLevel,
       requiredLevel: localTool.definition.requiredLevel,
       risk: localTool.definition.risk,

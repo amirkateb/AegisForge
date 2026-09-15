@@ -65,7 +65,7 @@ npm run build
 npm run dev
 ```
 
-`OPENAI_API_KEY` is optional for the deterministic API, policy engine, and direct tool execution, but is required by `POST /v1/tasks/{id}/run` for autonomous Understand/Plan execution. `OPENAI_MODEL` defaults to `gpt-5.6`.
+AegisForge does not call an LLM API. One private Custom GPT supplies all reasoning and planning through the `MCP_KEY`-protected Action API; the Master validates and executes only typed operations.
 
 Never commit `.env`. Use four independent, randomly generated secrets of at least 32 bytes for `MASTER_API_KEY`, `MCP_KEY`, `AGENT_ENROLLMENT_KEY`, and `DASHBOARD_SESSION_SECRET`.
 
@@ -115,7 +115,7 @@ Important surfaces include:
 
 - `/v1/organizations`, `/v1/projects`, and project context/impact queries
 - `/v1/agents`, Agent enrollment/lifecycle routes, and `/v1/agent/connect`
-- `/v1/tasks` and `/v1/tasks/{id}/run`
+- `/v1/ai/catalog`, `/v1/tasks`, task-scoped tools, plans and results
 - `/v1/tools/run`, `/v1/approvals`, and redacted `/v1/logs`
 - `/v1/projects/{id}/deployments` and `/v1/projects/{id}/tls`
 - `/mcp` for stateless MCP clients
@@ -144,7 +144,21 @@ node cli/dist/index.js logs
 | 3     | Sensitive operations | Services, Docker, database, backup |
 | 4     | Full access          | Critical restore and recovery      |
 
-Permission is necessary but not sufficient. Every tool also declares its risk and approval mode. An approval hash binds the exact tool, arguments, task, and step; changing any argument invalidates the approval. Treat an `UNKNOWN` dispatch result as potentially completed and inspect the target before retrying.
+Every Agent also has a durable access mode. Selecting a mode in the Agents page
+automatically synchronizes permission level 4 so all installed tools remain
+eligible:
+
+| Access mode | Behavior |
+| --- | --- |
+| Fully trusted | Runs every registered tool immediately, including `ALWAYS`, high/critical, and production operations. It never requests approval and is Agent-wide rather than task/session scoped. |
+| Cautious | Runs safe work automatically; requests exact approval for `ALWAYS`, high/critical sensitive, and production-mutating operations. This is the default. |
+| Very cautious | Automatically runs only low-risk tools marked `NEVER`; every other tool requires exact approval. |
+
+Authentication, installed-tool validation, dispatch expiry, assignment, and
+workspace containment remain active in every mode. For cautious modes, an
+approval hash binds the exact tool, arguments, task, and step. Treat an
+`UNKNOWN` dispatch result as potentially completed and inspect the target before
+retrying.
 
 ## Repository map
 
@@ -164,8 +178,8 @@ Permission is necessary but not sufficient. Every tool also declares its risk an
 
 - Keep the Master, MCP, enrollment, Agent, and dashboard credentials separate and rotate them independently.
 - Back up PostgreSQL before upgrades; migrations are forward-only, so database rollback is restore-from-backup.
-- Public certificate issuance, service restarts, Docker changes, and production database operations require a real target host and remain subject to approval and local policy.
-- A live production PostgreSQL migration, public Let's Encrypt issuance, and external OpenAI connectivity are environment-dependent and are not implied by repository tests.
+- Public certificate issuance, service restarts, Docker changes, and production database operations require a real target host. Approval depends on the selected Agent access mode; Fully trusted never pauses for it.
+- A live production PostgreSQL migration and public Let's Encrypt issuance are environment-dependent and are not implied by repository tests.
 
 ## Documentation
 

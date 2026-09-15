@@ -1,4 +1,5 @@
 import type {
+  AgentAccessMode,
   EngineeringPlan,
   EnvironmentName,
   PermissionLevel,
@@ -14,6 +15,7 @@ export interface AgentRecord {
   name: string;
   environment: EnvironmentName;
   permissionLevel: PermissionLevel;
+  accessMode: AgentAccessMode;
   tokenDigest: string;
   status: "ONLINE" | "OFFLINE" | "DISABLED" | "REVOKED";
   inventory: unknown | null;
@@ -91,7 +93,9 @@ export interface TaskStepRecord {
 
 export interface PlatformStore {
   listOrganizations(): Promise<OrganizationRecord[]>;
-  createOrganization(input: Pick<OrganizationRecord, "name">): Promise<OrganizationRecord>;
+  createOrganization(
+    input: Pick<OrganizationRecord, "name">,
+  ): Promise<OrganizationRecord>;
   findOrganization(id: string): Promise<OrganizationRecord | null>;
   listAgents(): Promise<AgentRecord[]>;
   createAgent(
@@ -103,6 +107,10 @@ export interface PlatformStore {
   updateAgentStatus(
     id: string,
     status: AgentRecord["status"],
+  ): Promise<AgentRecord | null>;
+  updateAgentAccessMode(
+    id: string,
+    accessMode: AgentAccessMode,
   ): Promise<AgentRecord | null>;
   updateAgentToken(
     id: string,
@@ -121,7 +129,10 @@ export interface PlatformStore {
     organizationId?: string | null;
   }): Promise<ProjectRecord>;
   findProject(id: string): Promise<ProjectRecord | null>;
-  findProjectByName(name: string, organizationId?: string | null): Promise<ProjectRecord | null>;
+  findProjectByName(
+    name: string,
+    organizationId?: string | null,
+  ): Promise<ProjectRecord | null>;
   createWorkspace(
     input: Pick<WorkspaceRecord, "projectId" | "agentId" | "rootPath">,
   ): Promise<WorkspaceRecord>;

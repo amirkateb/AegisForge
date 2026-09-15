@@ -1,4 +1,4 @@
-import type { Snapshot } from "./types.js";
+import type { AgentAccessMode, Snapshot } from "./types.js";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -29,6 +29,12 @@ export const api = {
     return request(`/v1/ui/approvals/${id}/decision`, {
       method: "POST",
       body: JSON.stringify({ decision }),
+    });
+  },
+  updateAgentAccessMode(id: string, accessMode: AgentAccessMode) {
+    return request(`/v1/ui/agents/${id}/access-mode`, {
+      method: "PATCH",
+      body: JSON.stringify({ accessMode }),
     });
   },
 };

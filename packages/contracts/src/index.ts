@@ -27,6 +27,13 @@ export const PermissionLevelSchema = z.union([
 ]);
 export type PermissionLevel = z.infer<typeof PermissionLevelSchema>;
 
+export const AgentAccessModeSchema = z.enum([
+  "FULL_TRUST",
+  "CAUTIOUS",
+  "VERY_CAUTIOUS",
+]);
+export type AgentAccessMode = z.infer<typeof AgentAccessModeSchema>;
+
 export const ApprovalModeSchema = z.enum(["NEVER", "SENSITIVE", "ALWAYS"]);
 export type ApprovalMode = z.infer<typeof ApprovalModeSchema>;
 
@@ -47,11 +54,13 @@ export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 
 export const AgentInventorySchema = z.object({
   agentVersion: z.string().min(1).max(100).optional(),
-  health: z.object({
-    score: z.number().min(0).max(100),
-    latencyMs: z.number().nonnegative().nullable(),
-    lastHeartbeatAt: z.string().datetime(),
-  }).optional(),
+  health: z
+    .object({
+      score: z.number().min(0).max(100),
+      latencyMs: z.number().nonnegative().nullable(),
+      lastHeartbeatAt: z.string().datetime(),
+    })
+    .optional(),
   os: z.object({
     platform: z.string(),
     release: z.string(),
@@ -192,7 +201,9 @@ export const ProjectContextCategorySchema = z.enum([
   "history",
   "code-index",
 ]);
-export type ProjectContextCategory = z.infer<typeof ProjectContextCategorySchema>;
+export type ProjectContextCategory = z.infer<
+  typeof ProjectContextCategorySchema
+>;
 
 export const ProjectContextSchema = z.object({
   projectId: z.string().min(1),
@@ -227,6 +238,7 @@ export const DispatchSchema = z.object({
   tool: ToolDefinitionSchema,
   intent: ToolIntentSchema,
   permissionLevel: PermissionLevelSchema,
+  accessMode: AgentAccessModeSchema,
   approvalGrantId: IdSchema.nullable(),
   issuedAt: z.string().datetime(),
   expiresAt: z.string().datetime(),

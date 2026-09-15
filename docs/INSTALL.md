@@ -1,8 +1,8 @@
 # Installation and operations
 
-Automatic assignment needs at least one online Agent with a registered workspace for the project. Technology matching comes from inventory, so install relevant runtimes and database CLIs on that host. TLS workflows additionally require Certbot plus the selected Nginx/Apache/Traefik executable and publicly reachable ports 80/443. Production effects remain paused until approval.
+Automatic assignment needs at least one online Agent with a registered workspace for the project. Technology matching comes from inventory, so install relevant runtimes and database CLIs on that host. TLS workflows additionally require Certbot plus the selected Nginx/Apache/Traefik executable and publicly reachable ports 80/443. Production effects pause according to the selected Agent access mode; Fully trusted does not pause for approval.
 
-Set `OPENAI_API_KEY` and optionally `OPENAI_MODEL` in the protected Master environment to enable automatic Understand/Plan execution. Without a provider key the deterministic API, policy and tools remain usable, while `/v1/tasks/{id}/run` returns `PLANNER_UNAVAILABLE` instead of pretending a plan was produced.
+No LLM provider key is installed on the Master. Configure the single private Custom GPT with the independently generated `MCP_KEY`; it supplies planning and reasoning through the Action API.
 
 ## Master
 

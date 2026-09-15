@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {
+  AgentAccessMode,
   EngineeringPlan,
   ProjectContext,
   ProjectContextCategory,
@@ -33,13 +34,20 @@ export class MemoryStore implements PlatformStore {
   private taskSteps: TaskStepRecord[] = [];
   private taskPlans = new Map<string, EngineeringPlan>();
   private projectProfiles = new Map<string, ProjectProfile>();
-  private projectMemory = new Map<string, Map<ProjectContextCategory, unknown>>();
+  private projectMemory = new Map<
+    string,
+    Map<ProjectContextCategory, unknown>
+  >();
 
   async listOrganizations() {
     return this.organizations.toSorted((a, b) => a.name.localeCompare(b.name));
   }
   async createOrganization(input: Pick<OrganizationRecord, "name">) {
-    const record = { id: randomUUID(), name: input.name, createdAt: new Date() };
+    const record = {
+      id: randomUUID(),
+      name: input.name,
+      createdAt: new Date(),
+    };
     this.organizations.push(record);
     return record;
   }
@@ -59,6 +67,7 @@ export class MemoryStore implements PlatformStore {
     const record: AgentRecord = {
       id: randomUUID(),
       ...input,
+      accessMode: "CAUTIOUS",
       status: "OFFLINE",
       inventory: null,
       lastSeenAt: null,
@@ -71,6 +80,13 @@ export class MemoryStore implements PlatformStore {
     const record = this.agents.find((agent) => agent.id === id);
     if (!record) return null;
     record.status = status;
+    return record;
+  }
+  async updateAgentAccessMode(id: string, accessMode: AgentAccessMode) {
+    const record = this.agents.find((agent) => agent.id === id);
+    if (!record) return null;
+    record.accessMode = accessMode;
+    record.permissionLevel = 4;
     return record;
   }
   async updateAgentToken(id: string, tokenDigest: string) {
@@ -93,7 +109,11 @@ export class MemoryStore implements PlatformStore {
   async listProjects() {
     return this.projects.toSorted((a, b) => a.name.localeCompare(b.name));
   }
-  async createProject(input: { name: string; repositoryUrl: string | null; organizationId?: string | null }) {
+  async createProject(input: {
+    name: string;
+    repositoryUrl: string | null;
+    organizationId?: string | null;
+  }) {
     const record: ProjectRecord = {
       id: randomUUID(),
       ...input,
@@ -107,7 +127,12 @@ export class MemoryStore implements PlatformStore {
     return this.projects.find((project) => project.id === id) ?? null;
   }
   async findProjectByName(name: string, organizationId: string | null = null) {
-    return this.projects.find((project) => project.name === name && project.organizationId === organizationId) ?? null;
+    return (
+      this.projects.find(
+        (project) =>
+          project.name === name && project.organizationId === organizationId,
+      ) ?? null
+    );
   }
   async createWorkspace(
     input: Pick<WorkspaceRecord, "projectId" | "agentId" | "rootPath">,
@@ -124,7 +149,9 @@ export class MemoryStore implements PlatformStore {
     return this.workspaces.find((workspace) => workspace.id === id) ?? null;
   }
   async listWorkspaces(projectId?: string) {
-    return this.workspaces.filter((item) => !projectId || item.projectId === projectId);
+    return this.workspaces.filter(
+      (item) => !projectId || item.projectId === projectId,
+    );
   }
   async listTasks() {
     return this.tasks.toSorted(
@@ -261,13 +288,27 @@ export class MemoryStore implements PlatformStore {
   }
   async saveProjectProfile(projectId: string, profile: ProjectProfile) {
     this.projectProfiles.set(projectId, profile);
-    await this.saveProjectMemory(projectId, "architecture", profile.architecture);
-    await this.saveProjectMemory(projectId, "dependencies", profile.dependencies);
+    await this.saveProjectMemory(
+      projectId,
+      "architecture",
+      profile.architecture,
+    );
+    await this.saveProjectMemory(
+      projectId,
+      "dependencies",
+      profile.dependencies,
+    );
     await this.saveProjectMemory(projectId, "database", profile.databases);
     await this.saveProjectMemory(projectId, "routes", profile.routes);
   }
-  async saveProjectMemory(projectId: string, category: ProjectContextCategory, content: unknown) {
-    const categories = this.projectMemory.get(projectId) ?? new Map<ProjectContextCategory, unknown>();
+  async saveProjectMemory(
+    projectId: string,
+    category: ProjectContextCategory,
+    content: unknown,
+  ) {
+    const categories =
+      this.projectMemory.get(projectId) ??
+      new Map<ProjectContextCategory, unknown>();
     categories.set(category, redactEvent(content));
     this.projectMemory.set(projectId, categories);
   }
@@ -283,13 +324,21 @@ export class MemoryStore implements PlatformStore {
       decisions: memory?.get("decisions") ?? null,
       knownIssues: memory?.get("known-issues") ?? null,
       history: memory?.get("history") ?? null,
-      codeIndex: (memory?.get("code-index") as ProjectContext["codeIndex"] | undefined) ?? null,
+      codeIndex:
+        (memory?.get("code-index") as
+          ProjectContext["codeIndex"] | undefined) ?? null,
     };
   }
-  async appendProjectHistory(projectId: string, entry: { taskId: string; outcome: string; summary: string; at?: string }) {
+  async appendProjectHistory(
+    projectId: string,
+    entry: { taskId: string; outcome: string; summary: string; at?: string },
+  ) {
     const context = await this.loadProjectContext(projectId);
     const history = Array.isArray(context.history) ? context.history : [];
-    await this.saveProjectMemory(projectId, "history", [...history.slice(-499), { ...entry, at: entry.at ?? new Date().toISOString() }]);
+    await this.saveProjectMemory(projectId, "history", [
+      ...history.slice(-499),
+      { ...entry, at: entry.at ?? new Date().toISOString() },
+    ]);
   }
   async saveTaskPlan(taskId: string, plan: EngineeringPlan) {
     this.taskPlans.set(taskId, structuredClone(plan));

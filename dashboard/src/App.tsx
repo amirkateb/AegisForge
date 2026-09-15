@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { api } from "./api.js";
-import type { Snapshot } from "./types.js";
+import type { AgentAccessMode, Snapshot } from "./types.js";
 import { Icon } from "./components/Icon.js";
 import { AgentTable } from "./components/AgentTable.js";
 import { TaskTimeline } from "./components/TaskTimeline.js";
@@ -19,6 +19,7 @@ const nav = [
   "Projects",
   "Tasks",
   "Approvals",
+  "Errors",
   "Logs",
   "Security",
   "Tools",
@@ -102,8 +103,8 @@ export function App() {
       },
       {
         label: "Security events",
-        value: filtered.logs.filter(
-          (l) => l.status === "FAILED" || l.status === "DENIED",
+        value: filtered.logs.filter((l) =>
+          ["FAILED", "DENIED", "UNKNOWN"].includes(l.status),
         ).length,
         tone: "danger",
       },
@@ -185,7 +186,15 @@ export function App() {
                 </section>
               ))}
             </div>
-            <Page active={active} data={filtered} approval={approval} />
+            <Page
+              active={active}
+              data={filtered}
+              approval={approval}
+              onAccessModeChange={async (agentId, accessMode) => {
+                await api.updateAgentAccessMode(agentId, accessMode);
+                await load();
+              }}
+            />
           </>
         )}
       </main>
@@ -197,10 +206,15 @@ function Page({
   active,
   data,
   approval,
+  onAccessModeChange,
 }: {
   active: string;
   data: Snapshot;
   approval: ReactNode;
+  onAccessModeChange: (
+    agentId: string,
+    accessMode: AgentAccessMode,
+  ) => Promise<void>;
 }) {
   if (active === "Agents")
     return (
@@ -209,6 +223,7 @@ function Page({
           agents={data.agents}
           projects={data.projects}
           tasks={data.tasks}
+          onAccessModeChange={onAccessModeChange}
         />
         <LogTable logs={data.logs.filter((log) => Boolean(log.agentId))} />
       </>
@@ -223,7 +238,11 @@ function Page({
           {data.projects.map((project) => (
             <article key={project.id}>
               <strong>{project.name}</strong>
-              <span>{data.organizations.find((item) => item.id === project.organizationId)?.name ?? "Independent project"}</span>
+              <span>
+                {data.organizations.find(
+                  (item) => item.id === project.organizationId,
+                )?.name ?? "Independent project"}
+              </span>
               <span>
                 {
                   data.tasks.filter((task) => task.projectId === project.id)
@@ -255,6 +274,15 @@ function Page({
     );
   if (active === "Approvals")
     return <div className="wide-approval">{approval}</div>;
+  if (active === "Errors")
+    return (
+      <LogTable
+        title="Execution errors from Master, Controller and Agents"
+        logs={data.logs.filter((log) =>
+          ["FAILED", "DENIED", "UNKNOWN"].includes(log.status),
+        )}
+      />
+    );
   if (active === "Logs") return <LogExplorer data={data} />;
   if (active === "Security")
     return (
@@ -328,7 +356,9 @@ function Page({
           </p>
           <p>
             <strong>Task assignment</strong>
-            <span>Explicit or scored; equal candidates require a human choice</span>
+            <span>
+              Explicit or scored; equal candidates require a human choice
+            </span>
           </p>
         </div>
       </Panel>
@@ -341,6 +371,7 @@ function Page({
             agents={data.agents}
             projects={data.projects}
             tasks={data.tasks}
+            onAccessModeChange={onAccessModeChange}
           />
           <TaskTimeline
             tasks={data.tasks}
@@ -377,7 +408,7 @@ function Panel({
 function LogExplorer({ data }: { data: Snapshot }) {
   const [query, setQuery] = useState("");
   const logs = data.logs.filter((log) =>
-    `${log.action} ${log.status} ${log.agentId ?? ""}`
+    `${log.action} ${log.status} ${log.agentId ?? ""} ${JSON.stringify(log.metadata)}`
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
@@ -416,6 +447,8 @@ function subtitle(active: string) {
         Projects: "Registered engineering contexts and activity",
         Tasks: "Understand, plan, execute, verify and fix",
         Approvals: "Review exact impact before sensitive execution",
+        Errors:
+          "Inspect failures reported by the Master, Controller and Agents",
         Logs: "Search and export redacted audit evidence",
         Security: "Identity, policy and approval controls",
         Tools: "Capabilities advertised by connected Agents",

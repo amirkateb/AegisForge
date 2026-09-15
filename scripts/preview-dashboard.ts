@@ -55,6 +55,19 @@ await store.appendAudit({
 await store.appendAudit({
   agentId: agent.id,
   projectId: project.id,
+  userId: "agent",
+  action: "agent.tool.failed",
+  durationMs: 31,
+  status: "FAILED",
+  metadata: {
+    taskId: task.id,
+    toolName: "developer.node",
+    error: "Test fixture: one focused test failed",
+  },
+});
+await store.appendAudit({
+  agentId: agent.id,
+  projectId: project.id,
   userId: "preview",
   action: "approval.requested",
   durationMs: 5,

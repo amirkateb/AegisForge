@@ -5,6 +5,8 @@ const paths: Record<string, string> = {
   projects: "M3 6h6l2 2h10v11H3z",
   tasks: "M9 11l3 3L22 4M21 12v7H3V5h11",
   approvals: "M9 12l2 2 4-4M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z",
+  errors:
+    "M12 9v4M12 17h.01M10.3 3.6 2.7 17a2 2 0 0 0 1.74 3h15.12A2 2 0 0 0 21.3 17L13.7 3.6a2 2 0 0 0-3.4 0z",
   logs: "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5",
   security: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4",
   tools:

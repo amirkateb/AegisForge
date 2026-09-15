@@ -1,9 +1,15 @@
 import type { Audit } from "../types.js";
-export function LogTable({ logs }: { logs: Audit[] }) {
+export function LogTable({
+  logs,
+  title = "Live events & security log",
+}: {
+  logs: Audit[];
+  title?: string;
+}) {
   return (
     <section className="panel logs">
       <div className="panel-title">
-        <h2>Live events & security log</h2>
+        <h2>{title}</h2>
         <span>{logs.length} retained</span>
       </div>
       <div className="table-scroll">
@@ -37,13 +43,19 @@ export function LogTable({ logs }: { logs: Audit[] }) {
                       <summary>View details</summary>
                       <pre>{JSON.stringify(log.metadata, null, 2)}</pre>
                     </details>
-                  ) : "—"}
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td>
                   <button
                     type="button"
                     aria-label={`Copy ${log.action} audit event`}
-                    onClick={() => void navigator.clipboard.writeText(JSON.stringify(log, null, 2))}
+                    onClick={() =>
+                      void navigator.clipboard.writeText(
+                        JSON.stringify(log, null, 2),
+                      )
+                    }
                   >
                     Copy
                   </button>

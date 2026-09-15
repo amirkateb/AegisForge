@@ -34,4 +34,40 @@ describe("evaluatePolicy", () => {
       }),
     ).toEqual({ type: "ALLOWED" });
   });
+
+  it("allows every tool without approval in full-trust mode", () => {
+    expect(
+      evaluatePolicy({
+        accessMode: "FULL_TRUST",
+        permissionLevel: 0,
+        requiredLevel: 4,
+        risk: "CRITICAL",
+        approval: "ALWAYS",
+      }),
+    ).toEqual({ type: "ALLOWED" });
+  });
+
+  it("requires approval for non-trivial tools in very-cautious mode", () => {
+    expect(
+      evaluatePolicy({
+        accessMode: "VERY_CAUTIOUS",
+        permissionLevel: 4,
+        requiredLevel: 2,
+        risk: "MEDIUM",
+        approval: "NEVER",
+      }),
+    ).toEqual({ type: "APPROVAL_REQUIRED", risk: "MEDIUM" });
+  });
+
+  it("still allows explicitly safe reads in very-cautious mode", () => {
+    expect(
+      evaluatePolicy({
+        accessMode: "VERY_CAUTIOUS",
+        permissionLevel: 4,
+        requiredLevel: 0,
+        risk: "LOW",
+        approval: "NEVER",
+      }),
+    ).toEqual({ type: "ALLOWED" });
+  });
 });

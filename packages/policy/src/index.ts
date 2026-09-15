@@ -1,4 +1,5 @@
 import type {
+  AgentAccessMode,
   ApprovalMode,
   PermissionLevel,
   Risk,
@@ -10,6 +11,7 @@ export type PolicyDecision =
   | { type: "APPROVAL_REQUIRED"; risk: Risk };
 
 export interface PolicyInput {
+  accessMode?: AgentAccessMode;
   permissionLevel: PermissionLevel;
   requiredLevel: PermissionLevel;
   risk: Risk;
@@ -19,9 +21,20 @@ export interface PolicyInput {
 const approvalRisks = new Set<Risk>(["HIGH", "CRITICAL"]);
 
 export function evaluatePolicy(input: PolicyInput): PolicyDecision {
+  const accessMode = input.accessMode ?? "CAUTIOUS";
+  if (accessMode === "FULL_TRUST") return { type: "ALLOWED" };
   if (input.permissionLevel < input.requiredLevel) {
     return { type: "DENIED", reason: "PERMISSION_LEVEL_TOO_LOW" };
   }
+  if (
+    accessMode === "VERY_CAUTIOUS" &&
+    !(
+      input.requiredLevel === 0 &&
+      input.risk === "LOW" &&
+      input.approval === "NEVER"
+    )
+  )
+    return { type: "APPROVAL_REQUIRED", risk: input.risk };
   if (
     input.approval === "ALWAYS" ||
     (input.approval === "SENSITIVE" && approvalRisks.has(input.risk))
@@ -38,32 +51,82 @@ export interface ContextPolicyInput extends PolicyInput {
   affectedPaths: string[];
 }
 
-const protectedPaths = new Set(["/", "/etc", "/boot", "/usr", "/var/lib", "/home"]);
-const mutatingActions = new Set(["install", "restart", "stop", "start", "reload", "pull", "push", "commit", "add", "build", "migrate", "set", "del"]);
+const protectedPaths = new Set([
+  "/",
+  "/etc",
+  "/boot",
+  "/usr",
+  "/var/lib",
+  "/home",
+]);
+const mutatingActions = new Set([
+  "install",
+  "restart",
+  "stop",
+  "start",
+  "reload",
+  "pull",
+  "push",
+  "commit",
+  "add",
+  "build",
+  "migrate",
+  "set",
+  "del",
+]);
 
-export function evaluateContextPolicy(input: ContextPolicyInput): PolicyDecision {
+export function evaluateContextPolicy(
+  input: ContextPolicyInput,
+): PolicyDecision {
   const base = evaluatePolicy(input);
+  if (input.accessMode === "FULL_TRUST") return base;
   if (base.type === "DENIED") return base;
   const serialized = JSON.stringify(input.arguments).toLowerCase();
-  const destructive = /\brm\b/.test(serialized) && /(?:-rf|-fr|--recursive)/.test(serialized);
+  const destructive =
+    /\brm\b/.test(serialized) && /(?:-rf|-fr|--recursive)/.test(serialized);
   const targetsProtectedPath = input.affectedPaths.some((item) => {
     const normalized = item.replace(/\/$/, "") || "/";
-    return [...protectedPaths].some((protectedPath) => normalized === protectedPath || (protectedPath !== "/" && normalized.startsWith(`${protectedPath}/`)));
+    return [...protectedPaths].some(
+      (protectedPath) =>
+        normalized === protectedPath ||
+        (protectedPath !== "/" && normalized.startsWith(`${protectedPath}/`)),
+    );
   });
   if (destructive && (input.affectedPaths.length === 0 || targetsProtectedPath))
     return { type: "DENIED", reason: "POLICY_DENIED" };
   if (base.type === "APPROVAL_REQUIRED") return base;
-  const action = typeof input.arguments.action === "string" ? input.arguments.action.toLowerCase() : "";
+  const action =
+    typeof input.arguments.action === "string"
+      ? input.arguments.action.toLowerCase()
+      : "";
   const readOnlyTools = new Set([
-    "filesystem.read", "filesystem.search", "filesystem.list", "system.info",
-    "system.process.list", "system.service.status", "system.disk",
-    "network.dns", "network.port", "network.http", "network.ping",
-    "docker.container.list", "docker.logs", "wordpress.plugin.analyze",
-    "laravel.migration.analyze", "git.diff.analyze", "git.conflict.analyze",
+    "filesystem.read",
+    "filesystem.search",
+    "filesystem.list",
+    "system.info",
+    "system.process.list",
+    "system.service.status",
+    "system.disk",
+    "network.dns",
+    "network.port",
+    "network.http",
+    "network.ping",
+    "docker.container.list",
+    "docker.logs",
+    "wordpress.plugin.analyze",
+    "laravel.migration.analyze",
+    "git.diff.analyze",
+    "git.conflict.analyze",
   ]);
   const mutatingTool = !readOnlyTools.has(input.toolName);
-  if (input.environment === "PRODUCTION" && (mutatingActions.has(action) || mutatingTool))
-    return { type: "APPROVAL_REQUIRED", risk: input.risk === "LOW" ? "MEDIUM" : input.risk };
+  if (
+    input.environment === "PRODUCTION" &&
+    (mutatingActions.has(action) || mutatingTool)
+  )
+    return {
+      type: "APPROVAL_REQUIRED",
+      risk: input.risk === "LOW" ? "MEDIUM" : input.risk,
+    };
   return base;
 }
 

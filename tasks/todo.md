@@ -105,3 +105,65 @@
 **Verification:** dashboard build, OpenAPI inspection and full `npm run check`.
 
 **Dependencies:** P207-P209.
+
+## Private GPT integration
+
+### P301: Complete the GPT-facing API
+
+**Status:** Complete.
+
+**Acceptance criteria:** A private GPT can discover all assigned servers and
+workspaces, create a task, inspect/edit/test with task-scoped tools, submit a
+plan, and read task details using only `MCP_KEY`.
+
+**Verification:** Focused API and WebSocket integration tests.
+
+### P302: Make execution plan-safe and observable
+
+**Status:** Complete.
+
+**Acceptance criteria:** Unplanned tasks do not auto-fail; planned tasks execute;
+all execution failures are redacted and available in the dashboard snapshot.
+
+**Verification:** Task runner, connection, redaction, and dashboard build checks.
+
+### P303: Publish the ready-to-import GPT contract
+
+**Status:** Complete.
+
+**Acceptance criteria:** OpenAPI and Persian/English setup documents match the
+implemented endpoints and contain paste-ready GPT instructions.
+
+**Verification:** OpenAPI inspection and full `npm run check`.
+
+## Agent access modes
+
+### P401: Persist and expose Agent access mode
+
+**Status:** Complete.
+
+**Acceptance criteria:** Every Agent has `FULL_TRUST`, `CAUTIOUS`, or
+`VERY_CAUTIOUS`; changing it is Agent-wide, audited, and synchronizes permission
+level 4.
+
+**Verification:** Contract, store, migration, and API integration tests.
+
+### P402: Enforce the mode end to end
+
+**Status:** Complete.
+
+**Acceptance criteria:** Master and Agent agree on the policy decision;
+`FULL_TRUST` never produces `APPROVAL_REQUIRED` and the other modes implement the
+documented matrix.
+
+**Verification:** Policy, task-runner, API, and WebSocket tests.
+
+### P403: Add dashboard controls and documentation
+
+**Status:** Complete.
+
+**Acceptance criteria:** The Agents panel explains and saves all three modes,
+and English/Persian/OpenAPI documentation matches runtime behavior.
+
+**Verification:** Typecheck, dashboard build, documentation inspection, and full
+`npm run check`.

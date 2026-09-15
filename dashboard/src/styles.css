@@ -241,6 +241,90 @@ header p {
   font-size: 10px;
   color: var(--accent);
 }
+.access-mode-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.access-mode-card {
+  min-width: 0;
+  padding: 12px;
+  background: #101923;
+  border-top: 2px solid var(--accent);
+}
+.access-mode-card.full_trust {
+  border-top-color: var(--danger);
+}
+.access-mode-card.cautious {
+  border-top-color: var(--warn);
+}
+.access-mode-card.very_cautious {
+  border-top-color: var(--healthy);
+}
+.access-mode-card strong,
+.access-mode-card span {
+  display: block;
+}
+.access-mode-card strong {
+  font-size: 11px;
+}
+.access-mode-card span {
+  margin-top: 3px;
+  color: #d7e1eb;
+  font-size: 10px;
+}
+.access-mode-card p,
+.access-mode-note {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+.access-mode-card p {
+  margin: 7px 0 0;
+}
+.access-mode-note {
+  margin: 0;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  background: #0e1720;
+}
+.access-mode-select {
+  min-width: 125px;
+  padding: 4px 6px;
+  color: #e4edf5;
+  background: #0c141c;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 10px;
+}
+.access-mode-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.saving {
+  margin-left: 6px;
+  color: var(--accent);
+}
+.inline-error {
+  padding: 9px 12px;
+  color: #ffd9de;
+  background: #3b1620;
+  border-bottom: 1px solid #71303d;
+  font-size: 11px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 table {
   width: 100%;
   border-collapse: collapse;
@@ -548,6 +632,9 @@ dd {
   }
 }
 @media (max-width: 720px) {
+  .access-mode-guide {
+    grid-template-columns: 1fr;
+  }
   .app-shell {
     grid-template-columns: 58px minmax(0, 1fr);
   }

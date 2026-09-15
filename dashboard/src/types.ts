@@ -3,10 +3,15 @@ export type Agent = {
   name: string;
   environment: string;
   permissionLevel: number;
+  accessMode: AgentAccessMode;
   status: string;
   inventory: null | {
     agentVersion?: string;
-    health?: { score: number; latencyMs: number | null; lastHeartbeatAt: string };
+    health?: {
+      score: number;
+      latencyMs: number | null;
+      lastHeartbeatAt: string;
+    };
     cpu?: { loadPercent?: number };
     memory?: { totalBytes?: number; freeBytes?: number };
     disks?: Array<{ totalBytes: number; freeBytes: number }>;
@@ -14,8 +19,13 @@ export type Agent = {
   };
   lastSeenAt: string | null;
 };
+export type AgentAccessMode = "FULL_TRUST" | "CAUTIOUS" | "VERY_CAUTIOUS";
 export type Organization = { id: string; name: string };
-export type Project = { id: string; name: string; organizationId: string | null };
+export type Project = {
+  id: string;
+  name: string;
+  organizationId: string | null;
+};
 export type Task = {
   id: string;
   projectId: string;

@@ -8,7 +8,7 @@ AegisForge is a self-hosted control plane for coordinating AI-assisted engineeri
 
 - No default Agent: every task carries `projectId`, `agentId` and `workspaceId` before execution.
 - Model output is untrusted data. Only schema-valid tool intents may reach policy evaluation.
-- Permission level and risk are separate. A caller may have permission while the operation still requires approval.
+- Agent access mode is durable and independent of tasks. It controls approval while permission level controls tool eligibility.
 - Master and Agent both enforce the decision; neither trusts policy metadata supplied by a client.
 - Side-effecting requests require an idempotency key and are never blindly replayed after an unknown result.
 - Secrets are read from environment or secret files, are never returned by APIs and are redacted from logs.
@@ -71,7 +71,7 @@ Use explicit domain names, discriminated unions, immutable inputs, boundary vali
 
 ## Testing strategy
 
-- Unit: policy matrix, path containment, redaction, state transitions and planners.
+- Unit: policy matrix, path containment, redaction, state transitions and plan validation.
 - Integration: REST contracts, PostgreSQL repositories, Agent handshake and approval lifecycle.
 - Security: authentication separation, tenant/project authorization, traversal, replay, injection and secret leakage.
 - Connection: real Master plus test Agent over WebSocket.
@@ -81,7 +81,7 @@ Use explicit domain names, discriminated unions, immutable inputs, boundary vali
 ## Boundaries
 
 - Always: validate external input, authorize every resource, redact logs, use parameterized SQL, use idempotency for mutations, verify before completing.
-- Approval required: schema migrations, deploy/restart, destructive file/database operations, privilege changes, secret access and production-impacting commands.
+- Approval required in cautious modes: schema migrations, deploy/restart, destructive file/database operations, privilege changes, secret access and production-impacting commands. Full trust intentionally executes them without approval.
 - Never: commit secrets, trust model-generated commands, execute outside the assigned workspace, log tokens/passwords, auto-replay an unknown side effect, disable TLS in production.
 
 ## Success criteria
@@ -102,3 +102,65 @@ Use explicit domain names, discriminated unions, immutable inputs, boundary vali
 - Multiple organizations and Projects are supported; Agent/workspace assignment remains explicit or deterministically selected without a default Agent.
 - TLS certificates are provisioned through Certbot only when DNS already resolves to the host.
 - LLM providers are adapters. AegisForge works without one for deterministic task/tool execution.
+
+## Private GPT execution mode
+
+AegisForge supports one private Custom GPT as the only reasoning and planning
+client. The Master does not call an LLM provider. The GPT authenticates with the
+dedicated `MCP_KEY`, discovers online Agents and their project workspaces, and
+coordinates bounded Agent tools through the versioned REST Action API.
+
+### Acceptance criteria
+
+- One discovery call returns projects, online/offline Agents, project workspaces,
+  and the exact tool schemas advertised by each connected Agent.
+- The GPT can create a queued task without triggering execution before a plan is
+  available, inspect/edit/test through a task-scoped tool endpoint, optionally
+  submit a complete `EngineeringPlan`, and fetch a task detail view containing
+  steps, approvals, and redacted task events.
+- A task created with a plan persists that plan before background execution
+  starts. A task without a plan remains queued until the GPT acts on it.
+- The GPT can record a final `COMPLETED` or `FAILED` report with verification
+  evidence after an interactive tool-driven session.
+- When a cautious mode requests approval, the decision remains a
+  dashboard/operator action; the GPT can inspect its status and continue after
+  the decision. Full trust never creates that approval.
+- Controller, REST, MCP, dispatch, and Agent failures are written to the redacted
+  audit stream and are visible in the dashboard error view.
+- The checked-in Custom GPT OpenAPI schema exposes only the private GPT workflow
+  and works with Bearer `MCP_KEY` authentication.
+- No `OPENAI_API_KEY` or internal planning provider is required or documented.
+
+## Agent access modes
+
+Every Agent has one durable access mode. Selecting a mode from the dashboard
+also sets the Agent permission level to 4 so every installed tool remains
+eligible; the mode determines whether execution pauses for operator approval.
+
+- `FULL_TRUST`: every registered tool is allowed without an approval, including
+  `ALWAYS`, `HIGH`, `CRITICAL`, and production mutations. This decision is
+  Agent-wide and is not scoped to a task, step, tool, argument hash, or session.
+- `CAUTIOUS`: low/medium-risk work proceeds automatically. Tools marked
+  `ALWAYS`, high/critical sensitive tools, and production mutations require an
+  exact expiring approval.
+- `VERY_CAUTIOUS`: only low-risk tools explicitly marked `NEVER` proceed
+  automatically. Every other tool requires an exact expiring approval.
+
+Authentication, assignment validation, the Agent's installed-tool registry,
+dispatch expiry, and canonical workspace containment remain execution
+boundaries in every mode. They are not approval prompts and cannot be bypassed
+by an access-mode selection.
+
+### Acceptance criteria
+
+- New and migrated Agents default to `CAUTIOUS` without changing existing
+  behavior.
+- Master API and dashboard can change one Agent's access mode; the operation is
+  audited and atomically raises the Agent permission level to 4.
+- Master policy and Agent-local policy make the same decision from the selected
+  mode carried in the authenticated dispatch.
+- `FULL_TRUST` never creates or requires an approval for any registered tool.
+- The dashboard explains each mode before selection, exposes save progress and
+  errors, and refreshes the effective mode and permission level after saving.
+- Unit, API, task-runner, connection, typecheck, dashboard build, and full
+  regression suites pass.

@@ -1,125 +1,78 @@
 openapi: 3.1.0
 info:
-  title: AegisForge AI Engineering API
-  version: 0.1.0
-  description: Explicit Project, Agent, Workspace, Task and approval coordination.
+  title: AegisForge Private GPT API
+  version: 0.3.0
+  description: >-
+    Private Action API for discovering AegisForge servers and workspaces,
+    inspecting and changing project files, running tests, submitting execution
+    plans, and reading redacted results. Authenticate with the dedicated MCP_KEY.
 servers:
   - url: https://forge.example.com
 security:
   - bearerAuth: []
 paths:
-  /v1/organizations:
+  /v1/ai/catalog:
     get:
-      operationId: listOrganizations
-      summary: List organizations
-      responses:
-        "200": { description: Organization list, content: { application/json: { schema: { $ref: "#/components/schemas/ListResponse" } } } }
-  /v1/agents:
-    get:
-      operationId: listAgents
-      summary: List registered Agents and live inventory
+      operationId: getAegisForgeCatalog
+      summary: List accessible servers, projects, workspaces and exact Agent tools
       responses:
         "200":
-          {
-            description: Agent list,
-            content:
-              {
-                application/json:
-                  { schema: { $ref: "#/components/schemas/ListResponse" } },
-              },
-          }
-  /v1/projects:
-    get:
-      operationId: listProjects
-      summary: List Projects
-      responses:
-        "200":
-          {
-            description: Project list,
-            content:
-              {
-                application/json:
-                  { schema: { $ref: "#/components/schemas/ListResponse" } },
-              },
-          }
+          description: Private GPT resource catalog
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Catalog" }
+        "401": { $ref: "#/components/responses/Error" }
   /v1/projects/{id}/context:
     get:
       operationId: getProjectContext
-      summary: Load durable project intelligence and learning context
+      summary: Load durable knowledge previously learned about one project
       parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
       responses:
-        "200": { description: Project context, content: { application/json: { schema: { type: object } } } }
+        "200":
+          {
+            description: Project context,
+            content: { application/json: { schema: { type: object } } },
+          }
         "404": { $ref: "#/components/responses/Error" }
-  /v1/projects/{id}/context/{category}:
-    put:
-      operationId: updateProjectContext
-      summary: Replace one bounded project context category
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: category, in: path, required: true, schema: { type: string, enum: [architecture, dependencies, environment, database, routes, decisions, known-issues, history, code-index] } }
-      requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, required: [content], properties: { content: {} } } } }
-      responses:
-        "204": { description: Context updated }
-        "404": { $ref: "#/components/responses/Error" }
-  /v1/logs/export:
-    get:
-      operationId: exportAuditLogs
-      summary: Export filtered redacted audit records as CSV
-      responses:
-        "200": { description: CSV audit export, content: { text/csv: { schema: { type: string } } } }
   /v1/projects/{id}/impact:
     get:
       operationId: analyzeProjectImpact
-      summary: Find files, symbols and routes affected by a symbol
+      summary: Find indexed files and symbols affected by changing a symbol
       parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: symbol, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 300 } }
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+        - {
+            name: symbol,
+            in: query,
+            required: true,
+            schema: { type: string, minLength: 1, maxLength: 300 },
+          }
       responses:
-        "200": { description: Impact graph, content: { application/json: { schema: { type: object } } } }
+        "200":
+          {
+            description: Impact graph,
+            content: { application/json: { schema: { type: object } } },
+          }
         "409": { $ref: "#/components/responses/Error" }
-  /v1/projects/{id}/deployments:
-    post:
-      operationId: deployProject
-      summary: Create an idempotent staged deployment task
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 200 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/CreateDeployment" }
-      responses:
-        "201": { description: Deployment task created, content: { application/json: { schema: { type: object } } } }
-        "409": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
-  /v1/projects/{id}/tls:
-    post:
-      operationId: configureProjectTls
-      summary: Create an idempotent DNS-to-HTTPS task
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 200 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/CreateTlsWorkflow" }
-      responses:
-        "201": { description: TLS task created, content: { application/json: { schema: { type: object } } } }
-        "409": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
   /v1/tasks:
     post:
-      operationId: createTask
-      summary: Create an automatically or explicitly assigned engineering task
+      operationId: createEngineeringTask
+      summary: Create a task on an explicit server workspace, optionally with a complete plan
       parameters:
         - name: Idempotency-Key
           in: header
           required: true
+          description: Stable unique key reused only for an exact retry of this request
           schema: { type: string, minLength: 8, maxLength: 200 }
       requestBody:
         required: true
@@ -129,25 +82,67 @@ paths:
       responses:
         "201":
           {
-            description: Created task,
+            description: Task created,
             content: { application/json: { schema: { type: object } } },
           }
+        "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
-        "409": { $ref: "#/components/responses/Error" }
-  /v1/tasks/{id}/run:
-    post:
-      operationId: runTaskController
-      summary: Run or resume the autonomous engineering controller
+  /v1/tasks/{id}:
+    get:
+      operationId: getEngineeringTask
+      summary: Read task status, plan, steps, approvals and redacted events
       parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
       responses:
-        "200": { description: Controller completed, content: { application/json: { schema: { type: object } } } }
-        "202": { description: Controller paused for approval, content: { application/json: { schema: { type: object } } } }
-        "409": { $ref: "#/components/responses/Error" }
-  /v1/approvals/{id}/decision:
+        "200":
+          {
+            description: Complete task detail,
+            content: { application/json: { schema: { type: object } } },
+          }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/tasks/{id}/tools/run:
     post:
-      operationId: decideApproval
-      summary: Human decision for one pending approval
+      operationId: runTaskTool
+      summary: Run one exact advertised Agent tool inside the task workspace
+      description: >-
+        Use this repeatedly to inspect files, edit code, run tests and verify the
+        result. If approval is required, preserve the returned stepId and repeat
+        the exact request with that stepId and approvalId after dashboard approval.
+      parameters:
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskToolRun" }
+      responses:
+        "200":
+          {
+            description: Tool executed,
+            content: { application/json: { schema: { type: object } } },
+          }
+        "202":
+          {
+            description: Human approval required,
+            content: { application/json: { schema: { type: object } } },
+          }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/tasks/{id}/plan:
+    post:
+      operationId: submitEngineeringPlan
+      summary: Save a validated plan and optionally start background execution
       parameters:
         - {
             name: id,
@@ -161,39 +156,134 @@ paths:
           application/json:
             schema:
               type: object
-              required: [decision]
+              additionalProperties: false
+              required: [plan]
               properties:
-                decision:
-                  { type: string, enum: [APPROVE_ONCE, APPROVE_SESSION, DENY] }
+                plan: { $ref: "#/components/schemas/EngineeringPlan" }
+                start: { type: boolean, default: true }
       responses:
-        "200":
+        "202":
           {
-            description: Decided approval,
+            description: Plan saved and accepted,
             content: { application/json: { schema: { type: object } } },
           }
+        "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
-  /v1/tools/run:
+  /v1/tasks/{id}/result:
     post:
-      operationId: runTool
-      summary: Evaluate policy and dispatch an exact tool intent
+      operationId: recordEngineeringResult
+      summary: Record the GPT final report and mark an interactive task completed or failed
+      parameters:
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ToolIntent" }
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status, summary]
+              properties:
+                status: { type: string, enum: [COMPLETED, FAILED] }
+                summary: { type: string, minLength: 3, maxLength: 10000 }
+                verification: {}
       responses:
         "200":
           {
-            description: Executed,
+            description: Final report recorded,
             content: { application/json: { schema: { type: object } } },
           }
-        "202":
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/logs:
+    get:
+      operationId: listExecutionLogs
+      summary: Read bounded redacted Master, Controller and Agent events
+      parameters:
+        - { name: status, in: query, schema: { type: string, maxLength: 50 } }
+        - { name: action, in: query, schema: { type: string, maxLength: 200 } }
+        - { name: search, in: query, schema: { type: string, maxLength: 500 } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 1000, default: 200 },
+          }
+      responses:
+        "200":
           {
-            description: Human approval required,
+            description: Redacted audit events,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/ListResponse" } },
+              },
+          }
+  /v1/projects/{id}/deployments:
+    post:
+      operationId: deployProject
+      summary: Create an idempotent staged deployment task
+      parameters:
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+        - {
+            name: Idempotency-Key,
+            in: header,
+            required: true,
+            schema: { type: string, minLength: 8, maxLength: 200 },
+          }
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/CreateDeployment" } },
+          }
+      responses:
+        "201":
+          {
+            description: Deployment task created,
             content: { application/json: { schema: { type: object } } },
           }
-        "403": { $ref: "#/components/responses/Error" }
-        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/projects/{id}/tls:
+    post:
+      operationId: configureProjectTls
+      summary: Create an idempotent DNS-to-HTTPS workflow
+      parameters:
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+        - {
+            name: Idempotency-Key,
+            in: header,
+            required: true,
+            schema: { type: string, minLength: 8, maxLength: 200 },
+          }
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/CreateTlsWorkflow" } },
+          }
+      responses:
+        "201":
+          {
+            description: TLS task created,
+            content: { application/json: { schema: { type: object } } },
+          }
+        "422": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer }
@@ -201,7 +291,99 @@ components:
     ListResponse:
       type: object
       required: [data]
-      properties: { data: { type: array, items: { type: object } } }
+      properties: { data: { type: array, items: {} } }
+    Catalog:
+      type: object
+      required: [organizations, projects, servers]
+      properties:
+        organizations: { type: array, items: { type: object } }
+        projects: { type: array, items: { type: object } }
+        servers:
+          type: array
+          items:
+            type: object
+            required:
+              [
+                id,
+                name,
+                environment,
+                permissionLevel,
+                accessMode,
+                status,
+                workspaces,
+                tools,
+              ]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+              environment:
+                { type: string, enum: [PRODUCTION, DEVELOPMENT, TESTING] }
+              permissionLevel: { type: integer, minimum: 0, maximum: 4 }
+              accessMode:
+                {
+                  type: string,
+                  enum: [FULL_TRUST, CAUTIOUS, VERY_CAUTIOUS],
+                  description: Agent-wide approval posture. FULL_TRUST never requests approval.,
+                }
+              status:
+                { type: string, enum: [ONLINE, OFFLINE, DISABLED, REVOKED] }
+              inventory: {}
+              lastSeenAt: { type: [string, "null"], format: date-time }
+              workspaces: { type: array, items: { type: object } }
+              tools:
+                {
+                  type: array,
+                  items: { $ref: "#/components/schemas/ToolDefinition" },
+                }
+    ToolDefinition:
+      type: object
+      required:
+        [
+          name,
+          description,
+          requiredLevel,
+          risk,
+          approval,
+          inputSchema,
+          timeoutMs,
+        ]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        requiredLevel: { type: integer, minimum: 0, maximum: 4 }
+        risk: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
+        approval: { type: string, enum: [NEVER, SENSITIVE, ALWAYS] }
+        inputSchema: { type: object }
+        timeoutMs: { type: integer }
+    PlanStep:
+      type: object
+      additionalProperties: false
+      required: [title, description, toolName, arguments, verification]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 200 }
+        description: { type: string, minLength: 3, maxLength: 2000 }
+        toolName: { type: [string, "null"] }
+        arguments: { type: object, additionalProperties: true }
+        verification: { type: string, minLength: 3, maxLength: 2000 }
+    EngineeringPlan:
+      type: object
+      additionalProperties: false
+      required: [summary, assumptions, steps]
+      properties:
+        summary: { type: string, minLength: 3, maxLength: 4000 }
+        assumptions:
+          {
+            type: array,
+            maxItems: 20,
+            items: { type: string, maxLength: 1000 },
+          }
+        steps:
+          {
+            type: array,
+            minItems: 1,
+            maxItems: 50,
+            items: { $ref: "#/components/schemas/PlanStep" },
+          }
     CreateTask:
       type: object
       additionalProperties: false
@@ -212,12 +394,43 @@ components:
         workspaceId: { type: string, format: uuid }
         goal: { type: string, minLength: 3, maxLength: 20000 }
         maxFixAttempts: { type: integer, minimum: 0, maximum: 5, default: 2 }
-        requiredPermissionLevel: { type: integer, minimum: 0, maximum: 4, default: 2 }
+        requiredPermissionLevel:
+          { type: integer, minimum: 0, maximum: 4, default: 2 }
         technologies: { type: array, maxItems: 30, items: { type: string } }
+        plan: { $ref: "#/components/schemas/EngineeringPlan" }
+    TaskToolRun:
+      type: object
+      additionalProperties: false
+      required: [toolName, arguments, reason, expectedImpact, affectedResources]
+      properties:
+        stepId:
+          type: string
+          format: uuid
+          description: Omit initially; reuse the returned value for an approval continuation.
+        toolName: { type: string, minLength: 2, maxLength: 100 }
+        arguments: { type: object, additionalProperties: true }
+        reason: { type: string, minLength: 3, maxLength: 4000 }
+        expectedImpact: { type: string, minLength: 3, maxLength: 4000 }
+        affectedResources:
+          {
+            type: array,
+            maxItems: 100,
+            items: { type: string, maxLength: 1000 },
+          }
+        approvalId: { type: string, format: uuid }
     CreateDeployment:
       type: object
       additionalProperties: false
-      required: [agentId, workspaceId, environment, branch, service, healthUrl, packageManager]
+      required:
+        [
+          agentId,
+          workspaceId,
+          environment,
+          branch,
+          service,
+          healthUrl,
+          packageManager,
+        ]
       properties:
         agentId: { type: string, format: uuid }
         workspaceId: { type: string, format: uuid }
@@ -237,34 +450,6 @@ components:
         domain: { type: string }
         email: { type: string, format: email }
         webServer: { type: string, enum: [nginx, apache, traefik] }
-    ToolIntent:
-      type: object
-      additionalProperties: false
-      required:
-        [
-          taskId,
-          projectId,
-          agentId,
-          workspaceId,
-          stepId,
-          toolName,
-          arguments,
-          reason,
-          expectedImpact,
-          affectedResources,
-        ]
-      properties:
-        taskId: { type: string, format: uuid }
-        projectId: { type: string, format: uuid }
-        agentId: { type: string, format: uuid }
-        workspaceId: { type: string, format: uuid }
-        stepId: { type: string, format: uuid }
-        toolName: { type: string }
-        arguments: { type: object, additionalProperties: true }
-        reason: { type: string }
-        expectedImpact: { type: string }
-        affectedResources: { type: array, items: { type: string } }
-        approvalId: { type: string, format: uuid }
     Error:
       type: object
       required: [error]
@@ -276,8 +461,10 @@ components:
             code: { type: string }
             message: { type: string }
             requestId: { type: string }
+            details: {}
   responses:
     Error:
       description: Structured API error
       content:
-        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }

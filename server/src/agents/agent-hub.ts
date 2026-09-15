@@ -17,6 +17,10 @@ interface ConnectedAgent {
   inventory: AgentInventory;
 }
 interface PendingDispatch {
+  agentId: string;
+  projectId: string;
+  taskId: string;
+  toolName: string;
   resolve(value: unknown): void;
   reject(error: Error): void;
   timer: NodeJS.Timeout;
@@ -59,6 +63,15 @@ export class AgentHub {
           lastPingAt: null,
           inventory: hello.inventory,
         });
+        await this.store.appendAudit({
+          agentId,
+          projectId: null,
+          userId: "agent",
+          action: "agent.connected",
+          durationMs: null,
+          status: "SUCCESS",
+          metadata: { agentVersion: hello.inventory.agentVersion ?? null },
+        });
         socket.send(
           JSON.stringify({
             type: "HELLO_ACK",
@@ -75,7 +88,10 @@ export class AgentHub {
           if (connected?.socket === socket) {
             const now = Date.now();
             connected.lastPongAt = now;
-            const latencyMs = connected.lastPingAt == null ? null : Math.max(0, now - connected.lastPingAt);
+            const latencyMs =
+              connected.lastPingAt == null
+                ? null
+                : Math.max(0, now - connected.lastPingAt);
             connected.inventory = {
               ...connected.inventory,
               health: {
@@ -84,11 +100,28 @@ export class AgentHub {
                 lastHeartbeatAt: new Date(now).toISOString(),
               },
             };
-            void this.store.updateAgentPresence(agentId, connected.inventory, new Date(now));
+            void this.store.updateAgentPresence(
+              agentId,
+              connected.inventory,
+              new Date(now),
+            );
           }
         });
-        socket.once("close", () => void this.disconnect(agentId, socket));
+        socket.once("close", (code, reason) =>
+          void this.disconnect(agentId, socket, code, reason.toString()),
+        );
       } catch (error) {
+        await this.store.appendAudit({
+          agentId,
+          projectId: null,
+          userId: "agent",
+          action: "agent.connection.failed",
+          durationMs: null,
+          status: "FAILED",
+          metadata: {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
         socket.close(
           4400,
           error instanceof Error
@@ -119,11 +152,32 @@ export class AgentHub {
       const timer = setTimeout(
         () => {
           this.pending.delete(dispatch.dispatchId);
+          void this.store.appendAudit({
+            agentId,
+            projectId: dispatch.projectId,
+            userId: "agent",
+            action: "agent.dispatch.timeout",
+            durationMs: null,
+            status: "UNKNOWN",
+            metadata: {
+              taskId: dispatch.taskId,
+              dispatchId: dispatch.dispatchId,
+              toolName: dispatch.tool.name,
+            },
+          });
           reject(new Error("Dispatch result is unknown after timeout"));
         },
         Math.max(1000, new Date(dispatch.expiresAt).getTime() - Date.now()),
       );
-      this.pending.set(dispatch.dispatchId, { resolve, reject, timer });
+      this.pending.set(dispatch.dispatchId, {
+        agentId,
+        projectId: dispatch.projectId,
+        taskId: dispatch.taskId,
+        toolName: dispatch.tool.name,
+        resolve,
+        reject,
+        timer,
+      });
       connected.socket.send(JSON.stringify(dispatch));
     });
   }
@@ -174,17 +228,47 @@ export class AgentHub {
       clearTimeout(pending.timer);
       this.pending.delete(value.dispatchId);
       if (value.ok) pending.resolve(value.result);
-      else pending.reject(new Error(value.error ?? "Agent execution failed"));
+      else {
+        void this.store.appendAudit({
+          agentId: pending.agentId,
+          projectId: pending.projectId,
+          userId: "agent",
+          action: "agent.tool.failed",
+          durationMs: null,
+          status: "FAILED",
+          metadata: {
+            taskId: pending.taskId,
+            dispatchId: value.dispatchId,
+            toolName: pending.toolName,
+            error: value.error ?? "Agent execution failed",
+          },
+        });
+        pending.reject(new Error(value.error ?? "Agent execution failed"));
+      }
     } catch {
       /* malformed messages are ignored and bounded by the socket payload limit */
     }
   }
-  private async disconnect(agentId: string, socket: WebSocket): Promise<void> {
+  private async disconnect(
+    agentId: string,
+    socket: WebSocket,
+    code: number,
+    reason: string,
+  ): Promise<void> {
     if (this.agents.get(agentId)?.socket !== socket) return;
     this.agents.delete(agentId);
     const agent = await this.store.findAgent(agentId);
     if (agent && !["DISABLED", "REVOKED"].includes(agent.status))
       await this.store.updateAgentStatus(agentId, "OFFLINE");
+    await this.store.appendAudit({
+      agentId,
+      projectId: null,
+      userId: "agent",
+      action: "agent.disconnected",
+      durationMs: null,
+      status: [1000, 1001, 4403, 4409].includes(code) ? "SUCCESS" : "FAILED",
+      metadata: { code, reason: reason || "WebSocket connection closed" },
+    });
   }
   private checkConnections(): void {
     const now = Date.now();
@@ -200,10 +284,22 @@ export class AgentHub {
   }
 }
 
-function liveHealthScore(inventory: AgentInventory, latencyMs: number | null): number {
-  const memoryFree = inventory.memory.totalBytes ? inventory.memory.freeBytes / inventory.memory.totalBytes * 100 : 0;
+function liveHealthScore(
+  inventory: AgentInventory,
+  latencyMs: number | null,
+): number {
+  const memoryFree = inventory.memory.totalBytes
+    ? (inventory.memory.freeBytes / inventory.memory.totalBytes) * 100
+    : 0;
   const disk = inventory.disks[0];
-  const diskFree = disk?.totalBytes ? disk.freeBytes / disk.totalBytes * 100 : 100;
+  const diskFree = disk?.totalBytes
+    ? (disk.freeBytes / disk.totalBytes) * 100
+    : 100;
   const latency = latencyMs == null ? 100 : Math.max(0, 100 - latencyMs / 10);
-  return Math.round((100 - inventory.cpu.loadPercent) * 0.35 + memoryFree * 0.3 + diskFree * 0.25 + latency * 0.1);
+  return Math.round(
+    (100 - inventory.cpu.loadPercent) * 0.35 +
+      memoryFree * 0.3 +
+      diskFree * 0.25 +
+      latency * 0.1,
+  );
 }

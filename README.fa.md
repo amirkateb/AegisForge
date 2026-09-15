@@ -65,7 +65,7 @@ npm run build
 npm run dev
 ```
 
-`OPENAI_API_KEY` برای API قطعی، موتور Policy و اجرای مستقیم Toolها اختیاری است؛ اما endpoint `POST /v1/tasks/{id}/run` برای اجرای خودکار Understand/Plan به آن نیاز دارد. مقدار پیش‌فرض `OPENAI_MODEL` برابر `gpt-5.6` است.
+AegisForge هیچ API مدل هوش مصنوعی را فراخوانی نمی‌کند. یک Custom GPT خصوصی تمام Reasoning و Planning را از طریق Action API محافظت‌شده با `MCP_KEY` انجام می‌دهد و Master فقط عملیات تایپ‌شده را اعتبارسنجی و اجرا می‌کند.
 
 فایل `.env` را commit نکنید. برای `MASTER_API_KEY`، `MCP_KEY`، `AGENT_ENROLLMENT_KEY` و `DASHBOARD_SESSION_SECRET` چهار secret مستقل و تصادفی با حداقل ۳۲ بایت بسازید.
 
@@ -115,7 +115,7 @@ Installer حالت Master، Agent یا هر دو را پشتیبانی می‌ک
 
 - `/v1/organizations`، `/v1/projects` و Queryهای Context/Impact پروژه
 - `/v1/agents`، Routeهای Enrollment/Lifecycle و `/v1/agent/connect`
-- `/v1/tasks` و `/v1/tasks/{id}/run`
+- `/v1/ai/catalog`، `/v1/tasks` و مسیرهای task-scoped ابزار، Plan و Result
 - `/v1/tools/run`، `/v1/approvals` و `/v1/logs` پالایش‌شده
 - `/v1/projects/{id}/deployments` و `/v1/projects/{id}/tls`
 - `/mcp` برای Clientهای stateless MCP
@@ -144,7 +144,19 @@ node cli/dist/index.js logs
 | ۳   | عملیات حساس | سرویس، Docker، پایگاه‌داده و Backup |
 | ۴   | دسترسی کامل | Restore و Recovery بحرانی           |
 
-داشتن Permission لازم است اما کافی نیست. هر Tool علاوه بر آن Risk و Approval Mode خود را اعلام می‌کند. Hash مربوط به Approval به Tool، آرگومان‌ها، Task و Step دقیق متصل است و هر تغییر در آرگومان‌ها آن را نامعتبر می‌کند. نتیجهٔ `UNKNOWN` را احتمالاً اجراشده در نظر بگیرید و پیش از Retry وضعیت مقصد را بررسی کنید.
+هر Agent یک حالت دسترسی دائمی هم دارد. انتخاب Mode از صفحهٔ Agents، سطح
+دسترسی را خودکار روی ۴ می‌گذارد تا همهٔ Toolهای نصب‌شده قابل استفاده بمانند:
+
+| حالت دسترسی | رفتار |
+| --- | --- |
+| کاملاً مورد اعتماد (`FULL_TRUST`) | همهٔ Toolهای ثبت‌شده، حتی `ALWAYS`، پرریسک/بحرانی و عملیات Production را بی‌درنگ اجرا می‌کند. هیچ Approvalای نمی‌خواهد و به Task، Session یا آرگومان خاصی وابسته نیست. |
+| محتاط (`CAUTIOUS`) | کار امن را خودکار اجرا می‌کند؛ برای `ALWAYS`، عملیات حساس پرریسک/بحرانی و تغییرات Production تأیید دقیق می‌خواهد. حالت پیش‌فرض است. |
+| خیلی محتاط (`VERY_CAUTIOUS`) | فقط Tool کم‌ریسکی را که صریحاً `NEVER` است خودکار اجرا می‌کند؛ بقیهٔ Toolها Approval دقیق می‌خواهند. |
+
+احراز هویت، ثبت‌بودن Tool روی Agent، انقضای Dispatch، Assignment و مرز Workspace
+در هر سه حالت برقرارند. در دو حالت محتاط، Hash مربوط به Approval به Tool،
+آرگومان‌ها، Task و Step دقیق متصل است. نتیجهٔ `UNKNOWN` را احتمالاً اجراشده در
+نظر بگیرید و پیش از Retry وضعیت مقصد را بررسی کنید.
 
 ## ساختار مخزن
 
@@ -164,8 +176,8 @@ node cli/dist/index.js logs
 
 - Credentialهای Master، MCP، Enrollment، Agent و Dashboard را جدا نگه دارید و مستقل Rotate کنید.
 - پیش از Upgrade از PostgreSQL نسخهٔ پشتیبان بگیرید؛ Migrationها forward-only هستند و Rollback پایگاه‌داده با Restore از Backup انجام می‌شود.
-- صدور Certificate عمومی، Restart سرویس، تغییر Docker و عملیات پایگاه‌دادهٔ Production به میزبان واقعی نیاز دارند و همچنان تابع Approval و Policy محلی هستند.
-- موفقیت تست‌های مخزن به معنی اجرای Migration روی PostgreSQL زنده، صدور Let's Encrypt عمومی یا تأیید اتصال خارجی OpenAI نیست؛ این موارد به محیط مقصد وابسته‌اند.
+- صدور Certificate عمومی، Restart سرویس، تغییر Docker و عملیات پایگاه‌دادهٔ Production به میزبان واقعی نیاز دارند. نیاز به Approval تابع Mode انتخابی Agent است و حالت کاملاً مورد اعتماد هرگز متوقف نمی‌شود.
+- موفقیت تست‌های مخزن به معنی اجرای Migration روی PostgreSQL زنده یا صدور Let's Encrypt عمومی نیست؛ این موارد به محیط مقصد وابسته‌اند.
 
 ## مستندات
 
